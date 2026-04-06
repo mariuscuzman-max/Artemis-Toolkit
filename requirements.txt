@@ -1,0 +1,6 @@
+﻿customtkinter
+psutil
+pywin32
+watchdog
+Send2Trash
+pyinstaller

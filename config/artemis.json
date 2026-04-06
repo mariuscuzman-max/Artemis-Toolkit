@@ -1,0 +1,13 @@
+﻿{
+  "modes": {
+    "work": [],
+    "gaming": [],
+    "utilities": []
+  },
+  "monitors": {},
+  "settings": {
+    "theme": "artemis-dark",
+    "always_on_top": true,
+    "widget_alpha": 0.5
+  }
+}
