@@ -1,0 +1,1 @@
+MsgBox "Hello from Artemis AHK test script."

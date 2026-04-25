@@ -1,13 +1,67 @@
 ﻿{
-  "modes": {
-    "work": [],
-    "gaming": [],
-    "utilities": []
-  },
-  "monitors": {},
   "settings": {
     "theme": "artemis-dark",
     "always_on_top": true,
-    "widget_alpha": 0.5
+    "widget_alpha": 0.5,
+    "ahk_path": "C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe"
+  },
+  "monitors": {},
+  "modes": {
+    "work": [
+      {
+        "name": "Open Notepad",
+        "description": "Simple command test",
+        "enabled": false,
+        "delay_after": 1,
+        "type": "command",
+        "command": ["notepad.exe"]
+      },
+      {
+        "name": "Python Test Script",
+        "description": "Basic Python script test",
+        "enabled": true,
+        "delay_after": 0,
+        "type": "python",
+        "path": "scripts/python/test_script.py",
+        "cwd": "C:\\Users\\mariu\\Desktop\\Artemis-Toolkit"
+      },
+      {
+        "name": "Open YouTube",
+        "description": "Browser test",
+        "enabled": true,
+        "delay_after": 1,
+        "type": "url",
+        "url": "https://youtube.com"
+      },
+      {
+        "name": "Open Desktop",
+        "description": "Folder test",
+        "enabled": true,
+        "delay_after": 0,
+        "type": "folder",
+        "path": "C:\\Users\\mariu\\Desktop"
+      }
+    ],
+    "gaming": [
+      {
+        "name": "Open Calculator",
+        "description": "Simple gaming placeholder",
+        "enabled": true,
+        "delay_after": 0,
+        "type": "command",
+        "command": ["calc.exe"]
+      }
+    ],
+    "utilities": [
+      {
+        "name": "Downloads Auto Sorter",
+        "description": "Watch Downloads and sort files automatically",
+        "enabled": true,
+        "delay_after": 0,
+        "type": "python",
+        "path": "scripts/python/downloads_auto_sorter.py",
+        "cwd": "C:\\Users\\mariu\\Desktop\\Artemis-Toolkit"
+      }
+    ]
   }
 }

@@ -1,0 +1,956 @@
+# ARTEMIS TOOLKIT CONTEXT BUNDLE
+
+## PROJECT DESCRIPTION
+
+Artemis Toolkit is a Windows automation project. It launches apps/scripts based on modes like work, gaming, and utilities. It uses Python, JSON config files, and AutoHotkey scripts.
+
+## FILE TREE
+
+artemis/
+artemis\ahk/
+artemis\core/
+artemis\core\config_manager.py
+artemis\core\launcher.py
+artemis\core\logger.py
+artemis\core\script_registry.py
+artemis\core\validator.py
+artemis\main.py
+artemis\ui/
+config/
+config\artemis.json
+config\downloads_sorter.json
+README.md
+requirements.txt
+scripts/
+scripts\ahk/
+scripts\ahk\test_script.ahk
+scripts\python/
+scripts\python\downloads_auto_sorter.py
+scripts\python\test_script.py
+scripts\shell/
+
+
+## FILE CONTENTS
+
+
+
+--- FILE: artemis\core\config_manager.py ---
+
+import json
+from pathlib import Path
+
+from core.logger import log
+
+CONFIG_PATH = Path("config/artemis.json")
+
+
+def load_config() -> dict:
+    if not CONFIG_PATH.exists():
+        raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")
+
+    with CONFIG_PATH.open("r", encoding="utf-8-sig") as file:
+        config = json.load(file)
+
+    log("Configuration loaded successfully.")
+    return config
+
+--- FILE: artemis\core\launcher.py ---
+
+import subprocess
+import webbrowser
+from pathlib import Path
+
+from core.logger import log
+
+
+def run_command(command: list[str], cwd: str | None = None) -> bool:
+    try:
+        subprocess.Popen(command, cwd=cwd)
+        log(f"Launch success: {command}" + (f" | cwd={cwd}" if cwd else ""))
+        return True
+    except Exception as error:
+        log(f"Launch failed: {command} | Error: {error}", level="ERROR")
+        return False
+
+
+def run_python_script(script_path: str, cwd: str | None = None) -> bool:
+    path = Path(script_path)
+
+    if not path.exists():
+        log(f"Python script not found: {script_path}", level="ERROR")
+        return False
+
+    return run_command(["python", str(path)], cwd=cwd)
+
+
+def run_ahk_script(script_path: str, ahk_path: str, cwd: str | None = None) -> bool:
+    script = Path(script_path)
+    ahk = Path(ahk_path)
+
+    if not script_path:
+        log("AHK script path is empty.", level="ERROR")
+        return False
+
+    if not script.exists():
+        log(f"AHK script not found: {script_path}", level="ERROR")
+        return False
+
+    if not ahk_path:
+        log("AHK executable path is empty.", level="ERROR")
+        return False
+
+    if not ahk.exists():
+        log(f"AHK executable not found: {ahk_path}", level="ERROR")
+        return False
+
+    return run_command([str(ahk), str(script)], cwd=cwd)
+
+
+def open_url(url: str) -> bool:
+    try:
+        webbrowser.open(url)
+        log(f"Opened URL: {url}")
+        return True
+    except Exception as error:
+        log(f"Failed to open URL: {url} | Error: {error}", level="ERROR")
+        return False
+
+
+def open_folder(path: str) -> bool:
+    try:
+        subprocess.Popen(["explorer", path])
+        log(f"Opened folder: {path}")
+        return True
+    except Exception as error:
+        log(f"Failed to open folder: {path} | Error: {error}", level="ERROR")
+        return False
+
+--- FILE: artemis\core\logger.py ---
+
+from datetime import datetime
+from pathlib import Path
+
+
+LOG_FILE = Path("logs/artemis.log")
+
+
+def log(message: str, level: str = "INFO") -> None:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{timestamp}] [{level}] {message}"
+
+    print(line)
+
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with LOG_FILE.open("a", encoding="utf-8") as file:
+        file.write(line + "\n")
+
+--- FILE: artemis\core\script_registry.py ---
+
+from core.logger import log
+
+
+def get_mode_entries(config: dict, mode_name: str) -> list[dict]:
+    modes = config.get("modes", {})
+    entries = modes.get(mode_name, [])
+
+    if not isinstance(entries, list):
+        log(f"Mode '{mode_name}' is not a valid list in config.", level="ERROR")
+        return []
+
+    log(f"Loaded {len(entries)} entries for mode '{mode_name}'.")
+    return entries
+
+--- FILE: artemis\core\validator.py ---
+
+from pathlib import Path
+
+from core.logger import log
+
+
+def validate_entry(entry: dict, config: dict) -> bool:
+    entry_name = entry.get("name", "Unnamed Entry")
+    entry_type = entry.get("type")
+
+    if not entry_type:
+        log(f"Entry '{entry_name}' is missing 'type'.", level="ERROR")
+        return False
+
+    if entry_type == "command":
+        command = entry.get("command")
+        if not isinstance(command, list) or not command:
+            log(f"Entry '{entry_name}' has invalid or empty 'command'.", level="ERROR")
+            return False
+
+    elif entry_type == "python":
+        path = entry.get("path", "")
+        if not path:
+            log(f"Entry '{entry_name}' is missing 'path'.", level="ERROR")
+            return False
+
+        if not Path(path).exists():
+            log(f"Entry '{entry_name}' points to missing Python script: {path}", level="ERROR")
+            return False
+
+    elif entry_type == "ahk":
+        path = entry.get("path", "")
+        ahk_path = config.get("settings", {}).get("ahk_path", "")
+
+        if not path:
+            log(f"Entry '{entry_name}' is missing 'path'.", level="ERROR")
+            return False
+
+        if not Path(path).exists():
+            log(f"Entry '{entry_name}' points to missing AHK script: {path}", level="ERROR")
+            return False
+
+        if not ahk_path:
+            log(f"Entry '{entry_name}' cannot run because 'settings.ahk_path' is missing.", level="ERROR")
+            return False
+
+        if not Path(ahk_path).exists():
+            log(f"Entry '{entry_name}' has invalid AHK executable path: {ahk_path}", level="ERROR")
+            return False
+
+    elif entry_type == "url":
+        url = entry.get("url", "")
+        if not url:
+            log(f"Entry '{entry_name}' is missing 'url'.", level="ERROR")
+            return False
+
+    elif entry_type == "folder":
+        path = entry.get("path", "")
+        if not path:
+            log(f"Entry '{entry_name}' is missing 'path'.", level="ERROR")
+            return False
+
+        if not Path(path).exists():
+            log(f"Entry '{entry_name}' points to missing folder: {path}", level="ERROR")
+            return False
+
+    else:
+        log(f"Entry '{entry_name}' has unknown type: {entry_type}", level="ERROR")
+        return False
+
+    cwd = entry.get("cwd")
+    if cwd and not Path(cwd).exists():
+        log(f"Entry '{entry_name}' has invalid cwd: {cwd}", level="ERROR")
+        return False
+
+    return True
+
+--- FILE: artemis\main.py ---
+
+import sys
+import time
+
+from core.config_manager import load_config
+from core.launcher import (
+    run_command,
+    run_python_script,
+    run_ahk_script,
+    open_url,
+    open_folder,
+)
+from core.logger import log
+from core.script_registry import get_mode_entries
+from core.validator import validate_entry
+
+
+def execute_entry(entry: dict, config: dict) -> str:
+    entry_type = entry.get("type")
+    entry_name = entry.get("name", "Unnamed Entry")
+    enabled = entry.get("enabled", True)
+    delay_after = entry.get("delay_after", 0)
+    cwd = entry.get("cwd")
+
+    if not enabled:
+        log(f"Skipping disabled entry: {entry_name}", level="WARNING")
+        return "skipped"
+
+    if not validate_entry(entry, config):
+        log(f"Validation failed for entry: {entry_name}", level="ERROR")
+        return "failed"
+
+    log(f"Executing entry: {entry_name} ({entry_type})")
+
+    success = False
+
+    if entry_type == "command":
+        command = entry.get("command", [])
+        success = run_command(command, cwd=cwd)
+
+    elif entry_type == "python":
+        path = entry.get("path", "")
+        success = run_python_script(path, cwd=cwd)
+
+    elif entry_type == "ahk":
+        path = entry.get("path", "")
+        ahk_path = config.get("settings", {}).get("ahk_path", "")
+        success = run_ahk_script(path, ahk_path, cwd=cwd)
+
+    elif entry_type == "url":
+        url = entry.get("url", "")
+        success = open_url(url)
+
+    elif entry_type == "folder":
+        path = entry.get("path", "")
+        success = open_folder(path)
+
+    else:
+        log(f"Unknown entry type: {entry_type}", level="ERROR")
+        return "failed"
+
+    if delay_after > 0:
+        log(f"Waiting {delay_after} second(s) after '{entry_name}'")
+        time.sleep(delay_after)
+
+    return "success" if success else "failed"
+
+
+def run_mode(config: dict, mode_name: str) -> None:
+    entries = get_mode_entries(config, mode_name)
+
+    if not entries:
+        log(f"No entries found for mode '{mode_name}'.", level="WARNING")
+        return
+
+    log(f"Running mode: {mode_name}")
+
+    summary = {
+        "success": 0,
+        "failed": 0,
+        "skipped": 0,
+    }
+
+    for entry in entries:
+        result = execute_entry(entry, config)
+        summary[result] += 1
+
+    log(
+        f"Run summary for mode '{mode_name}': "
+        f"{summary['success']} success, "
+        f"{summary['failed']} failed, "
+        f"{summary['skipped']} skipped."
+    )
+
+
+def get_mode_from_args() -> str:
+    if len(sys.argv) > 1:
+        return sys.argv[1].lower()
+
+    return "work"
+
+
+def main():
+    log("Artemis started.")
+    config = load_config()
+    mode_name = get_mode_from_args()
+    run_mode(config, mode_name)
+
+
+if __name__ == "__main__":
+    main()
+
+--- FILE: config\artemis.json ---
+
+﻿{
+  "settings": {
+    "theme": "artemis-dark",
+    "always_on_top": true,
+    "widget_alpha": 0.5,
+    "ahk_path": "C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe"
+  },
+  "monitors": {},
+  "modes": {
+    "work": [
+      {
+        "name": "Open Notepad",
+        "description": "Simple command test",
+        "enabled": false,
+        "delay_after": 1,
+        "type": "command",
+        "command": ["notepad.exe"]
+      },
+      {
+  "name": "Python Test Script",
+  "description": "Basic Python script test",
+  "enabled": true,
+  "delay_after": 0,
+  "type": "python",
+  "path": "scripts/python/test_script.py",
+  "cwd": "C:\\Users\\mariu\\Desktop\\Artemis-Toolkit"
+},
+       {
+    "name": "Open YouTube",
+    "description": "Browser test",
+    "enabled": true,
+    "delay_after": 1,
+    "type": "url",
+    "url": "https://youtube.com"
+  },
+  {
+    "name": "Open Desktop",
+    "description": "Folder test",
+    "enabled": true,
+    "delay_after": 0,
+    "type": "folder",
+    "path": "C:\\Users\\mariu\\Desktop"
+  }
+]
+,
+
+    "gaming": [
+      {
+        "name": "Open Calculator",
+        "description": "Simple gaming placeholder",
+        "enabled": true,
+        "delay_after": 0,
+        "type": "command",
+        "command": ["calc.exe"]
+      }
+      
+    ],
+    "utilities": [
+      {
+  "name": "Downloads Auto Sorter",
+  "description": "Watch Downloads and sort files automatically",
+  "enabled": true,
+  "delay_after": 0,
+  "type": "python",
+  "path": "scripts/python/downloads_auto_sorter.py",
+  "cwd": "C:\\Users\\mariu\\Desktop\\Artemis-Toolkit"
+},{
+  "ignored_exact_names": [
+    "desktop.ini",
+    "thumbs.db",
+    "ehthumbs.db",
+    ".ds_store"
+  ],
+
+  "ignored_extensions": [
+    ".tmp",
+    ".lock",
+    ".crdownload",
+    ".part",
+    ".download",
+    ".opdownload",
+    ".!ut",
+    ".!qb",
+    ".bc!",
+    ".filepart"
+  ],
+
+  "ignored_prefixes": [
+    "~$",
+    ".~"
+  ],
+
+  "archive_extensions": [
+    ".zip",
+    ".rar",
+    ".7z"
+  ],
+
+  "min_file_age_seconds": 5
+}
+    ]
+  }
+}
+
+--- FILE: config\downloads_sorter.json ---
+
+{
+  "watch_folder": "C:\\Users\\mariu\\Downloads",
+  "destination_root": "C:\\Users\\mariu\\Downloads\\Sorted",
+  "skip_memory_days": 7,
+  "processed_memory_days": 30,
+  "ignored_exact_names": [
+    "desktop.ini",
+    "thumbs.db",
+    "ehthumbs.db",
+    ".ds_store"
+  ],
+  "ignored_extensions": [
+    ".tmp",
+    ".lock",
+    ".crdownload",
+    ".part",
+    ".download",
+    ".opdownload",
+    ".!ut",
+    ".!qb",
+    ".bc!",
+    ".filepart"
+  ],
+  "ignored_prefixes": [
+    "~$",
+    ".~"
+  ],
+  "archive_extensions": [
+    ".zip",
+    ".rar",
+    ".7z"
+  ],
+  "process_existing_on_startup": true,
+  "stability_wait_seconds": 2,
+  "min_file_age_seconds": 5,
+  "categories": {
+    "Imagini": [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"],
+    "Torrents": [".torrent"],
+    "Documente": [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx"],
+    "Video": [".mp4", ".mkv", ".avi", ".mov", ".webm"],
+    "Audio": [".mp3", ".wav", ".flac", ".ogg"],
+    "Installers": [".exe", ".msi"],
+    "Subtitrari": [".srt", ".sub"],
+    "Altele": []
+  },
+  "unknown_category": "Altele"
+}
+
+--- FILE: README.md ---
+
+﻿# Artemis Toolkit
+Prima versiune de bootstrap.
+
+
+--- FILE: requirements.txt ---
+
+﻿customtkinter
+psutil
+pywin32
+watchdog
+Send2Trash
+pyinstaller
+
+
+--- FILE: scripts\ahk\test_script.ahk ---
+
+MsgBox "Hello from Artemis AHK test script."
+
+--- FILE: scripts\python\downloads_auto_sorter.py ---
+
+import json
+import shutil
+import time
+import zipfile
+import tkinter as tk
+from tkinter import messagebox
+from pathlib import Path
+
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
+
+CONFIG_PATH = Path("config/downloads_sorter.json")
+LOG_FILE = Path("logs/downloads_sorter.log")
+STATE_FILE = Path("logs/downloads_sorter_state.json")
+
+
+def log(message: str, level: str = "INFO") -> None:
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{timestamp}] [{level}] {message}"
+    print(line)
+
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with LOG_FILE.open("a", encoding="utf-8") as file:
+        file.write(line + "\n")
+
+
+def load_config() -> dict:
+    if not CONFIG_PATH.exists():
+        raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")
+
+    with CONFIG_PATH.open("r", encoding="utf-8-sig") as file:
+        return json.load(file)
+
+
+def load_state() -> dict:
+    if not STATE_FILE.exists():
+        return {
+            "skipped_archives": [],
+            "processed_archives": [],
+        }
+
+    with STATE_FILE.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def save_state(state: dict) -> None:
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with STATE_FILE.open("w", encoding="utf-8") as file:
+        json.dump(state, file, indent=4)
+
+
+def get_file_key(file_path: Path) -> str:
+    try:
+        return f"{file_path.name}_{int(file_path.stat().st_size)}"
+    except FileNotFoundError:
+        return file_path.name
+
+
+def get_now_ts() -> int:
+    return int(time.time())
+
+
+def days_to_seconds(days: int) -> int:
+    return days * 24 * 60 * 60
+
+
+def prune_expired_state_entries(state: dict, config: dict) -> tuple[set[str], set[str], bool]:
+    now_ts = get_now_ts()
+    skip_memory_days = config.get("skip_memory_days", 7)
+    processed_memory_days = config.get("processed_memory_days", 30)
+
+    skip_expiry = days_to_seconds(skip_memory_days)
+    processed_expiry = days_to_seconds(processed_memory_days)
+
+    changed = False
+
+    valid_skipped = []
+    skipped_keys = set()
+
+    for item in state.get("skipped_archives", []):
+        key = item.get("key")
+        ts = item.get("timestamp", 0)
+
+        if not key:
+            changed = True
+            continue
+
+        if now_ts - ts <= skip_expiry:
+            valid_skipped.append(item)
+            skipped_keys.add(key)
+        else:
+            changed = True
+
+    valid_processed = []
+    processed_keys = set()
+
+    for item in state.get("processed_archives", []):
+        key = item.get("key")
+        ts = item.get("timestamp", 0)
+
+        if not key:
+            changed = True
+            continue
+
+        if now_ts - ts <= processed_expiry:
+            valid_processed.append(item)
+            processed_keys.add(key)
+        else:
+            changed = True
+
+    state["skipped_archives"] = valid_skipped
+    state["processed_archives"] = valid_processed
+
+    return skipped_keys, processed_keys, changed
+
+
+def remember_archive_decision(state: dict, bucket: str, file_key: str) -> None:
+    now_ts = get_now_ts()
+    items = state.get(bucket, [])
+
+    # replace existing entry if present
+    filtered_items = [item for item in items if item.get("key") != file_key]
+    filtered_items.append({
+        "key": file_key,
+        "timestamp": now_ts,
+    })
+
+    state[bucket] = filtered_items
+    save_state(state)
+
+
+def get_category_for_extension(extension: str, categories: dict, unknown_category: str) -> str:
+    extension = extension.lower()
+
+    for category_name, extensions in categories.items():
+        if extension in [ext.lower() for ext in extensions]:
+            return category_name
+
+    return unknown_category
+
+
+def is_ignored_file(file_name: str, config: dict) -> bool:
+    name_lower = file_name.lower()
+
+    for exact_name in config.get("ignored_exact_names", []):
+        if name_lower == exact_name.lower():
+            return True
+
+    for prefix in config.get("ignored_prefixes", []):
+        if name_lower.startswith(prefix.lower()):
+            return True
+
+    for ext in config.get("ignored_extensions", []):
+        if name_lower.endswith(ext.lower()):
+            return True
+
+    return False
+
+
+def is_archive(file_name: str, config: dict) -> bool:
+    name_lower = file_name.lower()
+
+    for ext in config.get("archive_extensions", []):
+        if name_lower.endswith(ext.lower()):
+            return True
+
+    return False
+
+
+def is_zip_file(file_path: Path) -> bool:
+    return file_path.suffix.lower() == ".zip"
+
+
+def is_valid_zip(file_path: Path) -> bool:
+    try:
+        with zipfile.ZipFile(file_path, "r") as zip_file:
+            return zip_file.testzip() is None
+    except Exception:
+        return False
+
+
+def ask_extract_archive(file_path: Path) -> bool:
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    result = messagebox.askyesno(
+        title="Artemis - Archive detected",
+        message=f"Arhivă detectată:\n{file_path.name}\n\nVrei să o dezarhivezi în Downloads?",
+        parent=root,
+    )
+
+    root.destroy()
+    return result
+
+
+def get_unique_extract_folder(base_folder: Path) -> Path:
+    if not base_folder.exists():
+        return base_folder
+
+    counter = 1
+    while True:
+        candidate = base_folder.parent / f"{base_folder.name}_{counter}"
+        if not candidate.exists():
+            return candidate
+        counter += 1
+
+
+def extract_zip_in_place(file_path: Path) -> bool:
+    if not is_valid_zip(file_path):
+        log(f"Invalid or corrupted zip archive: {file_path.name}", level="ERROR")
+        return False
+
+    extract_folder = file_path.parent / file_path.stem
+    extract_folder = get_unique_extract_folder(extract_folder)
+    extract_folder.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(file_path, "r") as zip_file:
+            zip_file.extractall(extract_folder)
+
+        log(f"Extracted '{file_path.name}' -> '{extract_folder}'")
+        return True
+    except Exception as error:
+        log(f"Failed to extract '{file_path.name}': {error}", level="ERROR")
+        return False
+
+
+def move_archive_to_sorted_archives(file_path: Path, config: dict) -> bool:
+    destination_root = Path(config["destination_root"])
+    archive_dir = destination_root / "Arhive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    destination_path = get_safe_destination_path(archive_dir, file_path.name)
+
+    try:
+        shutil.move(str(file_path), str(destination_path))
+        log(f"Moved archive '{file_path.name}' -> '{destination_path}'")
+        return True
+    except Exception as error:
+        log(f"Failed to move archive '{file_path.name}': {error}", level="ERROR")
+        return False
+
+
+def is_file_locked(file_path: Path) -> bool:
+    try:
+        with open(file_path, "r+b"):
+            return False
+    except (PermissionError, OSError):
+        return True
+
+
+def is_file_stable(file_path: Path, wait_seconds: int) -> bool:
+    if not file_path.exists() or not file_path.is_file():
+        return False
+
+    try:
+        first_size = file_path.stat().st_size
+        time.sleep(wait_seconds)
+        second_size = file_path.stat().st_size
+        return first_size == second_size
+    except (FileNotFoundError, PermissionError, OSError):
+        return False
+
+
+def get_safe_destination_path(destination_dir: Path, original_name: str) -> Path:
+    candidate = destination_dir / original_name
+
+    if not candidate.exists():
+        return candidate
+
+    stem = Path(original_name).stem
+    suffix = Path(original_name).suffix
+    counter = 1
+
+    while True:
+        new_name = f"{stem}_{counter}{suffix}"
+        candidate = destination_dir / new_name
+        if not candidate.exists():
+            return candidate
+        counter += 1
+
+
+def move_file_to_category(
+    file_path: Path,
+    config: dict,
+    skipped_archives: set[str],
+    processed_archives: set[str],
+    state: dict,
+) -> bool:
+    if not file_path.exists() or not file_path.is_file():
+        return False
+
+    file_name = file_path.name
+    file_key = get_file_key(file_path)
+
+    if is_ignored_file(file_name, config):
+        log(f"Ignored file (pattern): {file_name}")
+        return False
+
+    if is_archive(file_name, config):
+        if file_key in processed_archives:
+            return False
+
+        if file_key in skipped_archives:
+            return False
+
+        if is_zip_file(file_path):
+            log(f"Zip archive detected: {file_name}")
+
+            if ask_extract_archive(file_path):
+                extracted = extract_zip_in_place(file_path)
+
+                if extracted:
+                    moved_archive = move_archive_to_sorted_archives(file_path, config)
+
+                    if moved_archive:
+                        processed_archives.add(file_key)
+                        remember_archive_decision(state, "processed_archives", file_key)
+                        log(f"Archive extracted and moved out of Downloads: {file_name}")
+
+                return False
+
+            log(f"User skipped extraction for: {file_name}")
+            skipped_archives.add(file_key)
+            remember_archive_decision(state, "skipped_archives", file_key)
+            return False
+
+        log(f"Archive detected (non-zip, skipped for now): {file_name}")
+        return False
+
+    file_age = time.time() - file_path.stat().st_mtime
+    if file_age < config.get("min_file_age_seconds", 5):
+        log(f"File too new (waiting): {file_name}")
+        return False
+
+    if is_file_locked(file_path):
+        log(f"Skipped (locked): {file_name}", level="WARNING")
+        return False
+
+    wait_seconds = config.get("stability_wait_seconds", 2)
+
+    if not is_file_stable(file_path, wait_seconds):
+        log(f"File not stable yet: {file_name}", level="WARNING")
+        return False
+
+    extension = file_path.suffix.lower()
+
+    category = get_category_for_extension(
+        extension=extension,
+        categories=config["categories"],
+        unknown_category=config["unknown_category"],
+    )
+
+    destination_root = Path(config["destination_root"])
+    destination_dir = destination_root / category
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    destination_path = get_safe_destination_path(destination_dir, file_name)
+
+    try:
+        shutil.move(str(file_path), str(destination_path))
+        log(f"Moved '{file_name}' -> '{destination_path}'")
+        return True
+    except Exception as error:
+        log(f"Failed to move '{file_name}': {error}", level="ERROR")
+        return False
+
+
+class DownloadsHandler(FileSystemEventHandler):
+    def __init__(self, pending_files: set[str]):
+        self.pending_files = pending_files
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        self.pending_files.add(event.src_path)
+
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+        self.pending_files.add(event.src_path)
+
+
+def main():
+    config = load_config()
+    state = load_state()
+
+    skipped_archives, processed_archives, state_changed = prune_expired_state_entries(state, config)
+    if state_changed:
+        save_state(state)
+
+    watch_folder = Path(config["watch_folder"])
+    if not watch_folder.exists():
+        raise FileNotFoundError(f"Watch folder does not exist: {watch_folder}")
+
+    pending_files: set[str] = set()
+
+    process_existing_on_startup = config.get("process_existing_on_startup", True)
+    if process_existing_on_startup:
+        for item in watch_folder.iterdir():
+            if item.is_file():
+                pending_files.add(str(item))
+
+    event_handler = DownloadsHandler(pending_files)
+    observer = Observer()
+    observer.schedule(event_handler, str(watch_folder), recursive=False)
+    observer.start()
+
+    log(f"Watching folder: {watch_folder}")
+    log(f"Process existing on startup: {process_existing_on_startup}")
+
+    try:
+        while True:
+            for file_str in list(pending_files):
+                file_path = Path(file_str)
+
+
+[FILE TRUNCATED BECAUSE IT WAS TOO LARGE]
+
+
+--- FILE: scripts\python\test_script.py ---
+
+print("Hello from Artemis Python test script.")
