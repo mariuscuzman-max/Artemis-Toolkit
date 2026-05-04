@@ -377,7 +377,7 @@ QMainWindow {
         table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setWordWrap(False)
-        table.verticalHeader().setVisible(False)    
+        table.verticalHeader().setVisible(False)
     def restore_table_row_selection(self, table: QTableWidget, rows: list[int]) -> None:
         table.clearSelection()
 
@@ -395,7 +395,7 @@ QMainWindow {
                 index,
                 QItemSelectionModel.SelectionFlag.Select
                 | QItemSelectionModel.SelectionFlag.Rows,
-            )     
+            )
     # -------------------------
     # Processes page
     # -------------------------
