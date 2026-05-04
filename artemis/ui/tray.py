@@ -47,7 +47,7 @@ from scripts.python.artemis_control import (
 
 CONFIG_PATH = ROOT_DIR / "config" / "downloads_sorter.json"
 
-APP_VERSION = "v0.4.4"
+APP_VERSION = "v0.4.5"
 DEVELOPER_NAME = "Marius Cuzman"
 ARTEMIS_ACCENT = "#64d6d2"
 
@@ -60,7 +60,16 @@ def load_sorter_config() -> dict:
         return json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
     except Exception:
         return {}
-
+def save_sorter_config(config: dict) -> tuple[bool, str]:
+    try:
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG_PATH.write_text(
+            json.dumps(config, indent=2),
+            encoding="utf-8",
+        )
+        return True, ""
+    except Exception as error:
+        return False, str(error)
 
 def format_size(size_bytes: int) -> str:
     try:
@@ -98,7 +107,7 @@ class ArtemisMainWindow(QMainWindow):
         self.setMinimumSize(940, 580)
 
         self.current_cleanup_candidates = []
-
+        self.settings_dirty = False
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #202020;
@@ -746,14 +755,19 @@ QMainWindow {
         self.settings_summary_label = QLabel("Editable settings preview")
         self.settings_summary_label.setStyleSheet("font-size: 17px; font-weight: 600;")
 
-        settings_hint = QLabel("Controls are placeholders for now. They show the future layout without saving changes yet.")
+        settings_hint = QLabel(
+            "Process existing files can now be edited. Other settings are still read-only previews."
+        )
         settings_hint.setObjectName("MutedLabel")
 
         settings_layout.addWidget(self.settings_summary_label)
         settings_layout.addWidget(settings_hint)
 
         self.process_existing_toggle = QCheckBox("On")
-        self.process_existing_toggle.setEnabled(False)
+        self.process_existing_toggle.setEnabled(True)
+        self.process_existing_toggle.stateChanged.connect(
+            self.on_process_existing_toggle_changed
+        )
 
         self.cleanup_age_input = QLineEdit()
         self.cleanup_age_input.setFixedWidth(120)
@@ -781,9 +795,10 @@ QMainWindow {
 
         save_row = QHBoxLayout()
 
-        self.save_settings_button = QPushButton("Save settings later")
+        self.save_settings_button = QPushButton("Save settings")
         self.save_settings_button.setEnabled(False)
         self.save_settings_button.setFixedWidth(170)
+        self.save_settings_button.clicked.connect(self.save_settings)
 
         save_row.addWidget(self.save_settings_button)
         save_row.addStretch()
@@ -818,8 +833,44 @@ QMainWindow {
         row_layout.addWidget(control)
 
         return row_frame
+    def mark_settings_dirty(self):
+        self.settings_dirty = True
+        self.save_settings_button.setEnabled(True)
 
+    def on_process_existing_toggle_changed(self):
+        is_enabled = self.process_existing_toggle.isChecked()
+        self.process_existing_toggle.setText("On" if is_enabled else "Off")
+        self.mark_settings_dirty()
+
+    def save_settings(self):
+        config = load_sorter_config()
+
+        config["process_existing_on_startup"] = self.process_existing_toggle.isChecked()
+
+        success, error_message = save_sorter_config(config)
+
+        if not success:
+            QMessageBox.warning(
+                self,
+                "Artemis Settings",
+                f"Could not save settings:\n\n{error_message}",
+            )
+            return
+
+        self.settings_dirty = False
+        self.save_settings_button.setEnabled(False)
+
+        QMessageBox.information(
+            self,
+            "Artemis Settings",
+            "Settings saved.\n\nThis setting applies the next time the sorter starts.",
+        )
+
+        self.refresh_settings_preview()
     def refresh_settings_preview(self):
+        if self.settings_dirty:
+            return
+
         config = load_sorter_config()
 
         process_existing = config.get("process_existing_on_startup", True)
@@ -831,12 +882,16 @@ QMainWindow {
 
         min_total_size_mb = cleanup.get("min_total_size_mb", "unknown")
 
+        self.process_existing_toggle.blockSignals(True)
         self.process_existing_toggle.setChecked(bool(process_existing))
         self.process_existing_toggle.setText("On" if process_existing else "Off")
+        self.process_existing_toggle.blockSignals(False)
 
         self.cleanup_age_input.setText(f"{min_age_days} day(s)")
         self.cleanup_size_input.setText(f"{min_total_size_mb} MB")
         self.archive_extensions_input.setText(", ".join(archive_extensions))
+
+        self.save_settings_button.setEnabled(False)
 
     # -------------------------
     # About page
@@ -926,7 +981,7 @@ QMainWindow {
         if self.pages.currentIndex() == self.TAB_CLEANUP:
             self.refresh_cleanup_table()
 
-        if self.pages.currentIndex() == self.TAB_SETTINGS:
+        if self.pages.currentIndex() == self.TAB_SETTINGS and not self.settings_dirty:
             self.refresh_settings_preview()
 
     def open_sorted_folder(self):
