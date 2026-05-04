@@ -14,3 +14,11 @@ logs/
 
 # Random copies
 * - Copy.py
+
+runtime/
+logs/
+*.txt
+* - Copy.py
+PROJECT_AUDIT.txt
+artemis_context_bundle.txt
+luna_review_snippet.txt

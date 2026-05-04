@@ -1,19 +1,33 @@
+from email import message
 import json
+import os
 import shutil
+import sys
 import time
-import zipfile
 import tkinter as tk
-from tkinter import messagebox
+import zipfile
 from pathlib import Path
+from tkinter import messagebox
+from artemis.core.cleanup_tracker import clean_invalid_items
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+ROOT_DIR = Path(__file__).resolve().parents[2]
+ARTEMIS_DIR = ROOT_DIR / "artemis"
 
-CONFIG_PATH = Path("config/downloads_sorter.json")
-LOG_FILE = Path("logs/downloads_sorter.log")
-STATE_FILE = Path("logs/downloads_sorter_state.json")
-LOCK_FILE = Path("logs/downloads_sorter.lock")
+from artemis.core.cleanup_tracker import add_cleanup_item
+
+CONFIG_PATH = ROOT_DIR / "config/downloads_sorter.json"
+LOG_FILE = ROOT_DIR / "logs/downloads_sorter.log"
+STATE_FILE = ROOT_DIR / "logs/downloads_sorter_state.json"
+
+RUNTIME_DIR = ROOT_DIR / "runtime"
+LOCK_FILE = RUNTIME_DIR / "artemis.lock"
+PID_FILE = RUNTIME_DIR / "artemis.pid"
+STOP_FILE = RUNTIME_DIR / "artemis.stop"
+ACTIVITY_FILE = RUNTIME_DIR / "artemis_activity.json"
+
 
 def log(message: str, level: str = "INFO") -> None:
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -24,7 +38,53 @@ def log(message: str, level: str = "INFO") -> None:
     with LOG_FILE.open("a", encoding="utf-8") as file:
         file.write(line + "\n")
 
+_last_state = {"state": None, "message": None}
 
+def write_activity_state(state: str, message: str = "") -> None:
+    try:
+        if ACTIVITY_FILE.exists():
+            existing = json.loads(ACTIVITY_FILE.read_text(encoding="utf-8"))
+
+            if (
+                existing.get("state") == state and
+                existing.get("message") == message
+            ):
+                return
+    except Exception:
+        pass
+    try:
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+
+        payload = {
+            "state": state,
+            "message": message,
+            "timestamp": time.time(),
+        }
+
+        ACTIVITY_FILE.write_text(json.dumps(payload), encoding="utf-8")
+
+    except Exception as error:
+        log(f"Failed to write activity state: {error}", level="WARNING")
+
+
+
+def write_activity_state(state: str, message: str = "") -> None:
+    
+    
+    try:
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+
+        payload = {
+            "state": state,
+            "message": message,
+            "timestamp": time.time(),
+        }
+
+        ACTIVITY_FILE.write_text(json.dumps(payload), encoding="utf-8")
+
+    except Exception as error:
+        log(f"Failed to write activity state: {error}", level="WARNING")
+        
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")
@@ -52,7 +112,8 @@ def save_state(state: dict) -> None:
 
 def get_file_key(file_path: Path) -> str:
     try:
-        return f"{file_path.name}_{int(file_path.stat().st_size)}"
+        stat = file_path.stat()
+        return f"{file_path.name}_{stat.st_size}_{stat.st_mtime_ns}"
     except FileNotFoundError:
         return file_path.name
 
@@ -232,16 +293,40 @@ def move_archive_to_sorted_archives(file_path: Path, config: dict) -> bool:
     archive_dir = destination_root / "Arhive"
     archive_dir.mkdir(parents=True, exist_ok=True)
 
-    destination_path = get_safe_destination_path(archive_dir, file_path.name)
+    existing_path = archive_dir / file_path.name
+    is_duplicate_archive = False
 
     try:
+        original_size = file_path.stat().st_size
+
+        if existing_path.exists():
+            existing_size = existing_path.stat().st_size
+
+            if existing_size == original_size:
+                is_duplicate_archive = True
+                destination_path = get_duplicate_destination_path(archive_dir, file_path)
+
+                log(f"Potential duplicate archive detected (same name + size): {file_path.name}")
+            else:
+                destination_path = get_safe_destination_path(archive_dir, file_path.name)
+        else:
+            destination_path = get_safe_destination_path(archive_dir, file_path.name)
+
         shutil.move(str(file_path), str(destination_path))
         log(f"Moved archive '{file_path.name}' -> '{destination_path}'")
+
+        # orice arhivă mutată după extract poate fi cleanup candidate
+        add_cleanup_item(
+            str(destination_path),
+            original_size,
+            "duplicate_archive" if is_duplicate_archive else "archive"
+        )
+
         return True
+
     except Exception as error:
         log(f"Failed to move archive '{file_path.name}': {error}", level="ERROR")
         return False
-
 
 def is_file_locked(file_path: Path) -> bool:
     try:
@@ -281,6 +366,26 @@ def get_safe_destination_path(destination_dir: Path, original_name: str) -> Path
             return candidate
         counter += 1
 
+
+def get_duplicate_destination_path(destination_dir: Path, file_path: Path) -> Path:
+    stem = file_path.stem
+    suffix = file_path.suffix
+
+    if stem.endswith("_dup"):
+        stem = stem[:-4]
+
+    counter = 0
+
+    while True:
+        if counter == 0:
+            candidate = destination_dir / f"{stem}_dup{suffix}"
+        else:
+            candidate = destination_dir / f"{stem}_dup_{counter}{suffix}"
+
+        if not candidate.exists():
+            return candidate
+
+        counter += 1        
 
 def move_file_to_category(
     file_path: Path,
@@ -367,10 +472,42 @@ def move_file_to_category(
 
     destination_path = get_safe_destination_path(destination_dir, file_name)
 
+    existing_path = destination_dir / file_name
+    is_potential_duplicate = False
+
+    if existing_path.exists():
+        try:
+            existing_size = existing_path.stat().st_size
+            new_size = file_path.stat().st_size
+
+            if existing_size == new_size:
+                is_potential_duplicate = True
+                destination_path = get_duplicate_destination_path(destination_dir, file_path)
+
+                log(f"Potential duplicate detected (same name + size): {file_name}")
+            else:
+                destination_path = get_safe_destination_path(destination_dir, file_name)
+
+        except Exception as error:
+            log(f"Duplicate check failed for '{file_name}': {error}", level="WARNING")
+            destination_path = get_safe_destination_path(destination_dir, file_name)
+    else:
+        destination_path = get_safe_destination_path(destination_dir, file_name)
+
     try:
         shutil.move(str(file_path), str(destination_path))
         log(f"Moved '{file_name}' -> '{destination_path}'")
-        return True
+
+        if is_potential_duplicate:
+            add_cleanup_item(
+                str(destination_path),
+                destination_path.stat().st_size,
+                "duplicate"
+            )
+
+       
+        return True    
+    
     except Exception as error:
         log(f"Failed to move '{file_name}': {error}", level="ERROR")
         return False
@@ -391,26 +528,78 @@ class DownloadsHandler(FileSystemEventHandler):
         self.pending_files.add(event.src_path)
 
 def acquire_lock() -> bool:
-    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
     if LOCK_FILE.exists():
-        log("Downloads sorter is already running. Exiting duplicate instance.", level="WARNING")
-        return False
+        try:
+            existing_pid = int(PID_FILE.read_text().strip())
+
+            import psutil
+
+            if psutil.pid_exists(existing_pid):
+                log(
+                    "Downloads sorter is already running. Exiting duplicate instance.",
+                    level="WARNING",
+                )
+                return False
+
+            log("Stale lock detected. Cleaning up runtime files.", level="WARNING")
+
+        except Exception:
+            log("Invalid lock/PID state detected. Cleaning up runtime files.", level="WARNING")
+
+        for file_path in [LOCK_FILE, PID_FILE, STOP_FILE]:
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+            except Exception as error:
+                log(f"Failed to clean stale runtime file {file_path}: {error}", level="ERROR")
+                return False
 
     try:
-        LOCK_FILE.write_text(str(get_now_ts()), encoding="utf-8")
+        pid = os.getpid()
+
+        LOCK_FILE.write_text(f"{get_now_ts()}|{pid}", encoding="utf-8")
+        PID_FILE.write_text(str(pid), encoding="utf-8")
+
+        if STOP_FILE.exists():
+            STOP_FILE.unlink()
+
+        log(f"Lock acquired. PID: {pid}")
         return True
+
     except Exception as error:
-        log(f"Failed to create lock file: {error}", level="ERROR")
+        log(f"Failed to create runtime files: {error}", level="ERROR")
         return False
 
 
 def release_lock() -> None:
-    try:
-        if LOCK_FILE.exists():
-            LOCK_FILE.unlink()
-    except Exception as error:
-        log(f"Failed to remove lock file: {error}", level="ERROR")
+    for file_path in [LOCK_FILE, PID_FILE, STOP_FILE]:
+        try:
+            if file_path.exists():
+                file_path.unlink()
+        except Exception as error:
+            log(f"Failed to remove runtime file {file_path}: {error}", level="ERROR")
+
+def get_duplicate_destination_path(destination_dir: Path, file_path: Path) -> Path:
+    stem = file_path.stem
+    suffix = file_path.suffix
+
+    if stem.endswith("_dup"):
+        stem = stem[:-4]
+
+    counter = 0
+
+    while True:
+        if counter == 0:
+            candidate = destination_dir / f"{stem}_dup{suffix}"
+        else:
+            candidate = destination_dir / f"{stem}_dup_{counter}{suffix}"
+
+        if not candidate.exists():
+            return candidate
+
+        counter += 1
         
 def main():
     if not acquire_lock():
@@ -445,14 +634,34 @@ def main():
 
         log(f"Watching folder: {watch_folder}")
         log(f"Process existing on startup: {process_existing_on_startup}")
+        write_activity_state("idle", "Watching Downloads")
+
+        last_cleanup_run = 0
+        CLEANUP_INTERVAL = 600  # 10 minute
 
         while True:
+            now = time.time()
+
+            if now - last_cleanup_run > CLEANUP_INTERVAL:
+                clean_invalid_items()
+                last_cleanup_run = now
+
+            if STOP_FILE.exists():
+                log("Stop signal detected. Shutting down sorter.")
+                write_activity_state("idle", "Stopped")
+                break
+
+            if not pending_files:
+                write_activity_state("idle", "Watching Downloads")
+
             for file_str in list(pending_files):
                 file_path = Path(file_str)
 
                 if not file_path.exists():
                     pending_files.discard(file_str)
                     continue
+
+                write_activity_state("active", f"Checking {file_path.name}")
 
                 moved = move_file_to_category(
                     file_path,
@@ -462,7 +671,13 @@ def main():
                     state,
                 )
 
-                if moved or is_ignored_file(file_path.name, config):
+                if moved:
+                    write_activity_state("idle", "Watching Downloads")
+                    pending_files.discard(file_str)
+                    continue
+
+                if is_ignored_file(file_path.name, config):
+                    write_activity_state("idle", "Watching Downloads")
                     pending_files.discard(file_str)
                     continue
 
@@ -470,17 +685,26 @@ def main():
 
                 if is_archive(file_path.name, config):
                     if not is_zip_file(file_path):
+                        write_activity_state("idle", "Watching Downloads")
                         pending_files.discard(file_str)
                         continue
 
                     if file_key in skipped_archives or file_key in processed_archives:
+                        write_activity_state("idle", "Watching Downloads")
                         pending_files.discard(file_str)
                         continue
+
+                write_activity_state("idle", "Watching Downloads")
 
             time.sleep(2)
 
     except KeyboardInterrupt:
         log("Stopping downloads auto sorter.")
+        write_activity_state("idle", "Stopped by keyboard interrupt")
+
+    except Exception as error:
+        log(f"Downloads sorter crashed: {error}", level="ERROR")
+        write_activity_state("error", str(error))
 
     finally:
         if observer is not None:
@@ -488,7 +712,6 @@ def main():
             observer.join()
 
         release_lock()
-
-
+        
 if __name__ == "__main__":
-    main()
+    main()        

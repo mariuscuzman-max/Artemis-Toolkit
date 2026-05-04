@@ -9,6 +9,12 @@
     "ehthumbs.db",
     ".ds_store"
   ],
+
+  "cleanup": {
+  "min_age_seconds": 604800,
+  "min_total_size_mb": 10
+},
+
   "ignored_extensions": [
     ".tmp",
     ".lock",
