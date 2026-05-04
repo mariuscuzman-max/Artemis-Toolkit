@@ -10,6 +10,8 @@ from pathlib import Path
 from tkinter import messagebox
 from artemis.core.cleanup_tracker import clean_invalid_items
 
+from artemis.core.rules_engine import find_first_matching_user_rule
+
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -385,7 +387,70 @@ def get_duplicate_destination_path(destination_dir: Path, file_path: Path) -> Pa
         if not candidate.exists():
             return candidate
 
-        counter += 1        
+        counter += 1    
+        
+def apply_user_rule(file_path: Path, config: dict) -> bool | None:
+    """
+    Applies the first matching user rule.
+
+    Return values:
+    - True = file was moved
+    - False = file was intentionally skipped
+    - None = no rule applied, continue default sorting
+    """
+    rule = find_first_matching_user_rule(file_path, config)
+
+    if rule is None:
+        return None
+
+    action = rule.get("action", {})
+    action_type = action.get("type")
+    rule_name = rule.get("name", "Unnamed rule")
+
+    if action_type == "skip":
+        log(f"User rule skipped '{file_path.name}' via rule: {rule_name}")
+        return False
+
+    if action_type == "move_to":
+        destination = action.get("destination", "")
+        destination_dir = Path(destination).expanduser()
+
+        if not destination_dir.exists() or not destination_dir.is_dir():
+            log(
+                f"User rule destination invalid for '{file_path.name}': {destination}. "
+                f"Falling back to default sorting.",
+                level="WARNING",
+            )
+            return None
+
+        destination_path = get_safe_destination_path(destination_dir, file_path.name)
+
+        try:
+            shutil.move(str(file_path), str(destination_path))
+            log(
+                f"User rule moved '{file_path.name}' -> '{destination_path}' "
+                f"via rule: {rule_name}"
+            )
+            return True
+
+        except Exception as error:
+            log(
+                f"User rule failed to move '{file_path.name}': {error}",
+                level="ERROR",
+            )
+            return False
+
+    return None
+
+
+def is_user_skip_rule_match(file_path: Path, config: dict) -> bool:
+    rule = find_first_matching_user_rule(file_path, config)
+
+    if rule is None:
+        return False
+
+    action = rule.get("action", {})
+    return action.get("type") == "skip"    
 
 def move_file_to_category(
     file_path: Path,
@@ -457,6 +522,11 @@ def move_file_to_category(
     if not is_file_stable(file_path, wait_seconds):
         log(f"File not stable yet: {file_name}", level="WARNING")
         return False
+    
+    user_rule_result = apply_user_rule(file_path, config)
+
+    if user_rule_result is not None:
+        return user_rule_result
 
     extension = file_path.suffix.lower()
 
@@ -693,6 +763,11 @@ def main():
                         write_activity_state("idle", "Watching Downloads")
                         pending_files.discard(file_str)
                         continue
+
+                if is_user_skip_rule_match(file_path, config):
+                    write_activity_state("idle", "Watching Downloads")
+                    pending_files.discard(file_str)
+                    continue
 
                 write_activity_state("idle", "Watching Downloads")
 
