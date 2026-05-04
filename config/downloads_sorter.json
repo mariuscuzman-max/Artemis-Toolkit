@@ -15,35 +15,36 @@
   "min_total_size_mb": 10
 },
   "user_rules": {
-    "enabled": true,
-    "rules": [
-      {
-        "id": "example_pdf_custom_folder",
-        "name": "Example: PDFs to custom folder",
-        "enabled": false,
-        "match": {
-          "type": "extension",
-          "value": ".pdf"
-        },
-        "action": {
-          "type": "move_to",
-          "destination": "C:\\Users\\mariu\\Downloads\\Sorted\\Custom PDFs"
-        }
+  "enabled": true,
+  "rules": [
+    {
+      "id": "example_pdf_custom_folder",
+      "name": "Example: PDFs to custom folder",
+      "enabled": false,
+      "match": {
+        "type": "extension",
+        "value": ".pdf"
       },
-      {
-        "id": "example_skip_exe",
-        "name": "Example: skip EXE files",
-        "enabled": false,
-        "match": {
-          "type": "extension",
-          "value": ".exe"
-        },
-        "action": {
-          "type": "skip"
-        }
+      "action": {
+        "type": "move_to",
+        "destination": "C:\\Users\\mariu\\Downloads\\Sorted\\Custom PDFs"
       }
-    ]
-  },
+    },
+    {
+      "id": "example_skip_exe",
+      "name": "Example: skip EXE files",
+      "enabled": false,
+      "match": {
+        "type": "extension",
+        "value": ".exe"
+      },
+      "action": {
+        "type": "skip"
+      }
+    }
+  ]
+},
+
   "ignored_extensions": [
     ".tmp",
     ".lock",

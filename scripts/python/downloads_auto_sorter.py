@@ -1,5 +1,6 @@
 from email import message
 import json
+from logging import config
 import os
 import shutil
 import sys
@@ -10,7 +11,11 @@ from pathlib import Path
 from tkinter import messagebox
 from artemis.core.cleanup_tracker import clean_invalid_items
 
-from artemis.core.rules_engine import find_first_matching_user_rule
+
+from artemis.core.rules_engine import (
+    find_first_matching_user_rule,
+    validate_user_rules_config,
+)
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -496,6 +501,14 @@ def move_file_to_category(
                             level="WARNING",
                         )
 
+                else:
+                    skipped_archives.add(file_key)
+                    remember_archive_decision(state, "skipped_archives", file_key)
+                    log(
+                        f"Archive extraction failed, skipping future retries for now: {file_name}",
+                        level="WARNING",
+                    )
+
                 return False
 
             log(f"User skipped extraction for: {file_name}")
@@ -679,6 +692,10 @@ def main():
 
     try:
         config = load_config()
+
+        for warning in validate_user_rules_config(config):
+            log(warning, level="WARNING")
+
         state = load_state()
 
         skipped_archives, processed_archives, state_changed = prune_expired_state_entries(state, config)

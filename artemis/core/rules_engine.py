@@ -201,6 +201,127 @@ def normalize_user_rule(rule: dict) -> dict | None:
         "action": normalized_action,
     }
 
+def validate_user_rules_config(config: dict) -> list[str]:
+    """
+    Validates user_rules config for diagnostics.
+
+    Important:
+    - Does not move files.
+    - Does not crash the sorter.
+    - Returns warning messages only.
+    """
+    warnings = []
+
+    user_rules_config = config.get("user_rules", {})
+
+    if not isinstance(user_rules_config, dict):
+        return ["user_rules ignored: section must be an object."]
+
+    global_enabled = user_rules_config.get("enabled", True)
+
+    if not isinstance(global_enabled, bool):
+        warnings.append(
+            "user_rules.enabled should be true or false. Non-boolean value found."
+        )
+
+    rules = user_rules_config.get("rules", [])
+
+    if not isinstance(rules, list):
+        return ["user_rules.rules ignored: rules must be a list."]
+
+    seen_ids = set()
+
+    for index, rule in enumerate(rules):
+        label = f"user_rules.rules[{index}]"
+
+        if not isinstance(rule, dict):
+            warnings.append(f"{label} ignored: rule must be an object.")
+            continue
+
+        rule_id = rule.get("id", "")
+
+        if not isinstance(rule_id, str) or not rule_id.strip():
+            warnings.append(f"{label} warning: rule has missing/empty id.")
+        elif rule_id in seen_ids:
+            warnings.append(f"{label} warning: duplicate rule id '{rule_id}'.")
+        else:
+            seen_ids.add(rule_id)
+
+        rule_enabled = rule.get("enabled", True)
+
+        if not isinstance(rule_enabled, bool):
+            warnings.append(
+                f"{label} ignored: enabled must be true or false."
+            )
+            continue
+
+        if rule_enabled is False:
+            continue
+
+        match = rule.get("match", {})
+        action = rule.get("action", {})
+
+        if not isinstance(match, dict):
+            warnings.append(f"{label} ignored: match must be an object.")
+            continue
+
+        if not isinstance(action, dict):
+            warnings.append(f"{label} ignored: action must be an object.")
+            continue
+
+        match_type = match.get("type")
+        match_value = match.get("value", "")
+
+        if match_type not in SUPPORTED_RULE_MATCH_TYPES:
+            warnings.append(
+                f"{label} ignored: unsupported match type '{match_type}'."
+            )
+            continue
+
+        if not isinstance(match_value, str) or not match_value.strip():
+            warnings.append(f"{label} ignored: match value is empty.")
+            continue
+
+        if match_type == "extension":
+            normalized = normalize_extension(match_value)
+
+            if not normalized:
+                warnings.append(f"{label} ignored: extension is empty.")
+                continue
+
+        action_type = action.get("type")
+
+        if action_type == "delete":
+            warnings.append(
+                f"{label} ignored: delete action is not supported. "
+                "Artemis never deletes automatically."
+            )
+            continue
+
+        if action_type not in SUPPORTED_RULE_ACTION_TYPES:
+            warnings.append(
+                f"{label} ignored: unsupported action type '{action_type}'."
+            )
+            continue
+
+        if action_type == "move_to":
+            destination = action.get("destination", "")
+
+            if not isinstance(destination, str) or not destination.strip():
+                warnings.append(
+                    f"{label} ignored: move_to requires a destination folder."
+                )
+                continue
+
+            destination_path = Path(destination).expanduser()
+
+            if not destination_path.exists() or not destination_path.is_dir():
+                warnings.append(
+                    f"{label} warning: destination folder does not exist. "
+                    "Rule will fall back to default sorting."
+                )
+
+    return warnings
 
 def get_active_user_rules(config: dict) -> list[dict]:
     """
