@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import webbrowser
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -11,14 +12,17 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
+    QAbstractItemView,
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
+    QCheckBox,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -42,6 +46,10 @@ from scripts.python.artemis_control import (
 
 
 CONFIG_PATH = ROOT_DIR / "config" / "downloads_sorter.json"
+
+APP_VERSION = "v0.4.4"
+DEVELOPER_NAME = "Marius Cuzman"
+ARTEMIS_ACCENT = "#64d6d2"
 
 
 def load_sorter_config() -> dict:
@@ -81,12 +89,13 @@ class ArtemisMainWindow(QMainWindow):
     TAB_CLEANUP = 1
     TAB_CUSTOMIZE = 2
     TAB_SETTINGS = 3
+    TAB_ABOUT = 4
 
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("Artemis Toolkit")
-        self.setMinimumSize(900, 560)
+        self.setMinimumSize(940, 580)
 
         self.current_cleanup_candidates = []
 
@@ -96,11 +105,23 @@ class ArtemisMainWindow(QMainWindow):
                 color: #f2f2f2;
             }
 
+            QLabel {
+    background-color: transparent;
+}
+            
             QWidget {
-                background-color: #202020;
-                color: #f2f2f2;
-                font-size: 14px;
-            }
+    color: #f2f2f2;
+    font-size: 14px;
+}
+
+QLabel {
+    background-color: transparent;
+}
+
+QMainWindow {
+    background-color: #202020;
+    color: #f2f2f2;
+}
 
             QLabel#TitleLabel {
                 font-size: 28px;
@@ -115,8 +136,10 @@ class ArtemisMainWindow(QMainWindow):
             }
 
             QLabel#MutedLabel {
-                color: #b0b0b0;
-            }
+    color: #b0b0b0;
+    background-color: transparent;
+    padding: 2px 0px;
+}
 
             QFrame#Sidebar {
                 background-color: #181818;
@@ -135,26 +158,55 @@ class ArtemisMainWindow(QMainWindow):
                 background-color: #3f3f3f;
             }
 
+            QPushButton:disabled {
+                color: #777777;
+                background-color: #292929;
+                border: 1px solid #383838;
+            }
+
             QPushButton#SidebarButton {
                 border: none;
+                border-radius: 8px;
                 text-align: left;
                 padding: 10px 14px;
                 font-size: 15px;
             }
 
             QPushButton#SidebarButtonActive {
-                background-color: #3a3a3a;
-                border-left: 4px solid #d6b16a;
+                background-color: #2f3d3d;
+                border: none;
+                border-left: 4px solid __ACCENT__;
+                border-radius: 8px;
                 text-align: left;
-                padding: 10px 14px;
+                padding: 10px 14px 10px 16px;
                 font-size: 15px;
+                color: #ffffff;
+            }
+
+            QPushButton#DonateButton {
+                background-color: __ACCENT__;
+                color: #101010;
+                border: none;
+                border-radius: 10px;
+                padding: 10px 16px;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            QPushButton#DonateButton:hover {
+                background-color: #7be7e3;
             }
 
             QFrame#Card {
                 background-color: #2a2a2a;
                 border: 1px solid #3a3a3a;
-                border-radius: 12px;
-                padding: 12px;
+                border-radius: 14px;
+            }
+
+            QFrame#SettingRow {
+                background-color: #242424;
+                border: 1px solid #363636;
+                border-radius: 10px;
             }
 
             QTableWidget {
@@ -163,6 +215,8 @@ class ArtemisMainWindow(QMainWindow):
                 gridline-color: #3a3a3a;
                 border: 1px solid #3a3a3a;
                 border-radius: 8px;
+                selection-background-color: #2f4a4a;
+                selection-color: #ffffff;
             }
 
             QHeaderView::section {
@@ -176,7 +230,30 @@ class ArtemisMainWindow(QMainWindow):
             QTableWidget::item {
                 padding: 6px;
             }
-        """)
+
+            QLineEdit {
+                background-color: #303030;
+                color: #f2f2f2;
+                border: 1px solid #444444;
+                border-radius: 8px;
+                padding: 7px 10px;
+            }
+
+            QLineEdit:disabled {
+                color: #b0b0b0;
+                background-color: #292929;
+                border: 1px solid #3a3a3a;
+            }
+
+            QCheckBox {
+                spacing: 8px;
+            }
+
+            QCheckBox::indicator {
+                width: 38px;
+                height: 20px;
+            }
+        """.replace("__ACCENT__", ARTEMIS_ACCENT))
 
         root = QWidget()
         root_layout = QHBoxLayout()
@@ -202,11 +279,13 @@ class ArtemisMainWindow(QMainWindow):
         self.btn_cleanup = self.create_sidebar_button("Cleanup", self.TAB_CLEANUP)
         self.btn_customize = self.create_sidebar_button("Customize", self.TAB_CUSTOMIZE)
         self.btn_settings = self.create_sidebar_button("Settings", self.TAB_SETTINGS)
+        self.btn_about = self.create_sidebar_button("About", self.TAB_ABOUT)
 
         sidebar_layout.addWidget(self.btn_processes)
         sidebar_layout.addWidget(self.btn_cleanup)
         sidebar_layout.addWidget(self.btn_customize)
         sidebar_layout.addWidget(self.btn_settings)
+        sidebar_layout.addWidget(self.btn_about)
         sidebar_layout.addStretch()
 
         self.pages = QStackedWidget()
@@ -215,11 +294,13 @@ class ArtemisMainWindow(QMainWindow):
         self.cleanup_page = self.build_cleanup_page()
         self.customize_page = self.build_customize_page()
         self.settings_page = self.build_settings_page()
+        self.about_page = self.build_about_page()
 
         self.pages.addWidget(self.processes_page)
         self.pages.addWidget(self.cleanup_page)
         self.pages.addWidget(self.customize_page)
         self.pages.addWidget(self.settings_page)
+        self.pages.addWidget(self.about_page)
 
         root_layout.addWidget(self.sidebar)
         root_layout.addWidget(self.pages)
@@ -245,6 +326,7 @@ class ArtemisMainWindow(QMainWindow):
             self.btn_cleanup,
             self.btn_customize,
             self.btn_settings,
+            self.btn_about,
         ]
 
         for index, button in enumerate(buttons):
@@ -261,6 +343,9 @@ class ArtemisMainWindow(QMainWindow):
 
         if tab_index == self.TAB_CLEANUP:
             self.refresh_cleanup_table()
+
+        if tab_index == self.TAB_SETTINGS:
+            self.refresh_settings_preview()
 
     def make_page(self, title: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
@@ -280,10 +365,19 @@ class ArtemisMainWindow(QMainWindow):
         card.setObjectName("Card")
 
         layout = QVBoxLayout()
-        layout.setSpacing(8)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
         card.setLayout(layout)
 
         return card, layout
+
+    def configure_table(self, table: QTableWidget):
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setWordWrap(False)
+        table.verticalHeader().setVisible(False)
 
     # -------------------------
     # Processes page
@@ -369,10 +463,13 @@ class ArtemisMainWindow(QMainWindow):
         self.cleanup_table = QTableWidget()
         self.cleanup_table.setColumnCount(4)
         self.cleanup_table.setHorizontalHeaderLabels(["File", "Size", "Reason", "Path"])
-        self.cleanup_table.setAlternatingRowColors(True)
-        self.cleanup_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.cleanup_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.cleanup_table.horizontalHeader().setStretchLastSection(True)
+        self.configure_table(self.cleanup_table)
+
+        cleanup_header = self.cleanup_table.horizontalHeader()
+        cleanup_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        cleanup_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        cleanup_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        cleanup_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
 
         layout.addWidget(self.cleanup_table)
 
@@ -396,7 +493,20 @@ class ArtemisMainWindow(QMainWindow):
 
         return page
 
+    def get_selected_cleanup_paths_from_table(self) -> set[str]:
+        selected_rows = self.cleanup_table.selectionModel().selectedRows()
+        paths = set()
+
+        for index in selected_rows:
+            path_item = self.cleanup_table.item(index.row(), 3)
+            if path_item:
+                paths.add(path_item.text())
+
+        return paths
+
     def refresh_cleanup_table(self):
+        selected_paths = self.get_selected_cleanup_paths_from_table()
+
         candidates = get_cleanup_candidates()
         self.current_cleanup_candidates = candidates
 
@@ -422,11 +532,13 @@ class ArtemisMainWindow(QMainWindow):
             self.cleanup_table.setItem(row, 2, QTableWidgetItem(str(reason)))
             self.cleanup_table.setItem(row, 3, QTableWidgetItem(path_text))
 
-        self.cleanup_table.resizeColumnsToContents()
+            if path_text in selected_paths:
+                self.cleanup_table.selectRow(row)
 
     def get_selected_cleanup_candidates(self) -> list[dict]:
         selected_rows = sorted(
-            {index.row() for index in self.cleanup_table.selectedIndexes()}
+            index.row()
+            for index in self.cleanup_table.selectionModel().selectedRows()
         )
 
         return [
@@ -496,10 +608,14 @@ class ArtemisMainWindow(QMainWindow):
         self.rules_table = QTableWidget()
         self.rules_table.setColumnCount(5)
         self.rules_table.setHorizontalHeaderLabels(["Enabled", "Name", "Match", "Action", "Destination"])
-        self.rules_table.setAlternatingRowColors(True)
-        self.rules_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.rules_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.rules_table.horizontalHeader().setStretchLastSection(True)
+        self.configure_table(self.rules_table)
+
+        rules_header = self.rules_table.horizontalHeader()
+        rules_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        rules_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        rules_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        rules_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        rules_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
 
         layout.addWidget(self.rules_table)
 
@@ -527,7 +643,20 @@ class ArtemisMainWindow(QMainWindow):
 
         return page
 
+    def get_selected_rule_names_from_table(self) -> set[str]:
+        selected_rows = self.rules_table.selectionModel().selectedRows()
+        names = set()
+
+        for index in selected_rows:
+            name_item = self.rules_table.item(index.row(), 1)
+            if name_item:
+                names.add(name_item.text())
+
+        return names
+
     def refresh_rules_table(self):
+        selected_names = self.get_selected_rule_names_from_table()
+
         config = load_sorter_config()
         user_rules = config.get("user_rules", {})
         rules = user_rules.get("rules", [])
@@ -537,7 +666,9 @@ class ArtemisMainWindow(QMainWindow):
 
         self.rules_table.setRowCount(0)
 
-        for row, rule in enumerate(rules):
+        visible_row = 0
+
+        for rule in rules:
             if not isinstance(rule, dict):
                 continue
 
@@ -552,15 +683,18 @@ class ArtemisMainWindow(QMainWindow):
             action_type = action.get("type", "")
             destination = action.get("destination", "")
 
-            self.rules_table.insertRow(row)
+            self.rules_table.insertRow(visible_row)
 
-            self.rules_table.setItem(row, 0, QTableWidgetItem("Yes" if enabled else "No"))
-            self.rules_table.setItem(row, 1, QTableWidgetItem(str(name)))
-            self.rules_table.setItem(row, 2, QTableWidgetItem(f"{match_type}: {match_value}"))
-            self.rules_table.setItem(row, 3, QTableWidgetItem(str(action_type)))
-            self.rules_table.setItem(row, 4, QTableWidgetItem(str(destination)))
+            self.rules_table.setItem(visible_row, 0, QTableWidgetItem("Yes" if enabled else "No"))
+            self.rules_table.setItem(visible_row, 1, QTableWidgetItem(str(name)))
+            self.rules_table.setItem(visible_row, 2, QTableWidgetItem(f"{match_type}: {match_value}"))
+            self.rules_table.setItem(visible_row, 3, QTableWidgetItem(str(action_type)))
+            self.rules_table.setItem(visible_row, 4, QTableWidgetItem(str(destination)))
 
-        self.rules_table.resizeColumnsToContents()
+            if str(name) in selected_names:
+                self.rules_table.selectRow(visible_row)
+
+            visible_row += 1
 
     # -------------------------
     # Settings page
@@ -571,27 +705,52 @@ class ArtemisMainWindow(QMainWindow):
 
         settings_card, settings_layout = self.make_card()
 
-        self.settings_summary_label = QLabel("Settings loaded from downloads_sorter.json")
+        self.settings_summary_label = QLabel("Editable settings preview")
         self.settings_summary_label.setStyleSheet("font-size: 17px; font-weight: 600;")
 
-        self.process_existing_label = QLabel()
-        self.cleanup_age_label = QLabel()
-        self.cleanup_size_label = QLabel()
-        self.archive_label = QLabel()
-
-        for label in [
-            self.process_existing_label,
-            self.cleanup_age_label,
-            self.cleanup_size_label,
-            self.archive_label,
-        ]:
-            label.setObjectName("MutedLabel")
+        settings_hint = QLabel("Controls are placeholders for now. They show the future layout without saving changes yet.")
+        settings_hint.setObjectName("MutedLabel")
 
         settings_layout.addWidget(self.settings_summary_label)
-        settings_layout.addWidget(self.process_existing_label)
-        settings_layout.addWidget(self.cleanup_age_label)
-        settings_layout.addWidget(self.cleanup_size_label)
-        settings_layout.addWidget(self.archive_label)
+        settings_layout.addWidget(settings_hint)
+
+        self.process_existing_toggle = QCheckBox("On")
+        self.process_existing_toggle.setEnabled(False)
+
+        self.cleanup_age_input = QLineEdit()
+        self.cleanup_age_input.setFixedWidth(120)
+        self.cleanup_age_input.setEnabled(False)
+
+        self.cleanup_size_input = QLineEdit()
+        self.cleanup_size_input.setFixedWidth(120)
+        self.cleanup_size_input.setEnabled(False)
+
+        self.archive_extensions_input = QLineEdit()
+        self.archive_extensions_input.setEnabled(False)
+
+        settings_layout.addWidget(
+            self.make_setting_row("Process existing files on startup", self.process_existing_toggle)
+        )
+        settings_layout.addWidget(
+            self.make_setting_row("Cleanup reminder age", self.cleanup_age_input)
+        )
+        settings_layout.addWidget(
+            self.make_setting_row("Cleanup minimum total size", self.cleanup_size_input)
+        )
+        settings_layout.addWidget(
+            self.make_setting_row("Archive extensions", self.archive_extensions_input)
+        )
+
+        save_row = QHBoxLayout()
+
+        self.save_settings_button = QPushButton("Save settings later")
+        self.save_settings_button.setEnabled(False)
+        self.save_settings_button.setFixedWidth(170)
+
+        save_row.addWidget(self.save_settings_button)
+        save_row.addStretch()
+
+        settings_layout.addLayout(save_row)
 
         layout.addWidget(settings_card)
 
@@ -603,6 +762,24 @@ class ArtemisMainWindow(QMainWindow):
         layout.addStretch()
 
         return page
+
+    def make_setting_row(self, label_text: str, control: QWidget) -> QFrame:
+        row_frame = QFrame()
+        row_frame.setObjectName("SettingRow")
+
+        row_layout = QHBoxLayout()
+        row_layout.setContentsMargins(14, 10, 14, 10)
+        row_layout.setSpacing(12)
+        row_frame.setLayout(row_layout)
+
+        label = QLabel(label_text)
+        label.setStyleSheet("font-weight: 600;")
+
+        row_layout.addWidget(label)
+        row_layout.addStretch()
+        row_layout.addWidget(control)
+
+        return row_frame
 
     def refresh_settings_preview(self):
         config = load_sorter_config()
@@ -616,17 +793,74 @@ class ArtemisMainWindow(QMainWindow):
 
         min_total_size_mb = cleanup.get("min_total_size_mb", "unknown")
 
-        self.process_existing_label.setText(
-            f"Process existing files on startup: {process_existing}"
+        self.process_existing_toggle.setChecked(bool(process_existing))
+        self.process_existing_toggle.setText("On" if process_existing else "Off")
+
+        self.cleanup_age_input.setText(f"{min_age_days} day(s)")
+        self.cleanup_size_input.setText(f"{min_total_size_mb} MB")
+        self.archive_extensions_input.setText(", ".join(archive_extensions))
+
+    # -------------------------
+    # About page
+    # -------------------------
+
+    def build_about_page(self) -> QWidget:
+        page, layout = self.make_page("About")
+
+        about_card, about_layout = self.make_card()
+
+        title = QLabel("Artemis Toolkit")
+        title.setStyleSheet("font-size: 22px; font-weight: 700;")
+
+        pitch = QLabel(
+            "Turn it on once, your Downloads folder sorts itself, "
+            "and you get nudged to clean up files you do not use."
         )
-        self.cleanup_age_label.setText(
-            f"Cleanup reminder age: {min_age_days} day(s)"
-        )
-        self.cleanup_size_label.setText(
-            f"Cleanup minimum total size: {min_total_size_mb} MB"
-        )
-        self.archive_label.setText(
-            f"Archive extensions: {', '.join(archive_extensions)}"
+        pitch.setObjectName("MutedLabel")
+        pitch.setWordWrap(True)
+
+        version_label = QLabel(f"Version: {APP_VERSION}")
+        developer_label = QLabel(f"Developer: {DEVELOPER_NAME}")
+
+        for label in [version_label, developer_label]:
+            label.setObjectName("MutedLabel")
+
+        about_layout.addWidget(title)
+        about_layout.addWidget(pitch)
+        about_layout.addSpacing(8)
+        about_layout.addWidget(version_label)
+        about_layout.addWidget(developer_label)
+
+        button_row = QHBoxLayout()
+
+        github_button = QPushButton("GitHub later")
+        github_button.clicked.connect(lambda: self.show_placeholder_link("GitHub"))
+
+        reddit_button = QPushButton("Reddit later")
+        reddit_button.clicked.connect(lambda: self.show_placeholder_link("Reddit"))
+
+        donate_button = QPushButton("Donate")
+        donate_button.setObjectName("DonateButton")
+        donate_button.clicked.connect(lambda: self.show_placeholder_link("Donate"))
+
+        button_row.addWidget(github_button)
+        button_row.addWidget(reddit_button)
+        button_row.addWidget(donate_button)
+        button_row.addStretch()
+
+        about_layout.addSpacing(10)
+        about_layout.addLayout(button_row)
+
+        layout.addWidget(about_card)
+        layout.addStretch()
+
+        return page
+
+    def show_placeholder_link(self, name: str):
+        QMessageBox.information(
+            self,
+            "Artemis",
+            f"{name} link is not configured yet.",
         )
 
     # -------------------------
@@ -720,6 +954,9 @@ class ArtemisTray:
 
         settings_action = menu.addAction("Settings")
         settings_action.triggered.connect(lambda: self.open_window(ArtemisMainWindow.TAB_SETTINGS))
+
+        about_action = menu.addAction("About")
+        about_action.triggered.connect(lambda: self.open_window(ArtemisMainWindow.TAB_ABOUT))
 
         menu.addSeparator()
 
