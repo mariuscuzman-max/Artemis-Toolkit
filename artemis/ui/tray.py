@@ -1,10 +1,12 @@
+import atexit
 import json
 import os
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
-
+import psutil
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
 
@@ -44,8 +46,12 @@ from scripts.python.artemis_control import (
     stop_artemis,
 )
 
+from artemis.core.recent_activity import get_recent_activity
+
 
 CONFIG_PATH = ROOT_DIR / "config" / "downloads_sorter.json"
+RUNTIME_DIR = ROOT_DIR / "runtime"
+TRAY_PID_FILE = RUNTIME_DIR / "artemis_tray.pid"
 
 APP_VERSION = "v0.4.5"
 DEVELOPER_NAME = "Marius Cuzman"
@@ -92,6 +98,56 @@ def open_path_in_explorer(path: Path) -> None:
     except Exception:
         subprocess.Popen(["explorer", str(path)])
 
+def is_existing_tray_running() -> bool:
+    if not TRAY_PID_FILE.exists():
+        return False
+
+    try:
+        existing_pid = int(TRAY_PID_FILE.read_text(encoding="utf-8").strip())
+    except Exception:
+        return False
+
+    if existing_pid == os.getpid():
+        return False
+
+    if not psutil.pid_exists(existing_pid):
+        return False
+
+    try:
+        process = psutil.Process(existing_pid)
+        cmdline = " ".join(process.cmdline()).lower()
+
+        return (
+            "tray.py" in cmdline
+            or "artemis.ui.tray" in cmdline
+        )
+    except Exception:
+        return False
+
+
+def release_tray_instance_lock() -> None:
+    try:
+        if not TRAY_PID_FILE.exists():
+            return
+
+        existing_pid = int(TRAY_PID_FILE.read_text(encoding="utf-8").strip())
+
+        if existing_pid == os.getpid():
+            TRAY_PID_FILE.unlink()
+    except Exception:
+        pass
+
+
+def acquire_tray_instance_lock() -> bool:
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+
+    if is_existing_tray_running():
+        return False
+
+    TRAY_PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+    atexit.register(release_tray_instance_lock)
+
+    return True
 
 class ArtemisMainWindow(QMainWindow):
     TAB_PROCESSES = 0
@@ -443,9 +499,19 @@ QMainWindow {
         layout.addWidget(recent_title)
 
         recent_card, recent_layout = self.make_card()
-        recent_note = QLabel("Recent moved files will be shown here later.")
-        recent_note.setObjectName("MutedLabel")
-        recent_layout.addWidget(recent_note)
+
+        self.recent_activity_table = QTableWidget()
+        self.recent_activity_table.setColumnCount(3)
+        self.recent_activity_table.setHorizontalHeaderLabels(["Time", "Action", "File"])
+        self.configure_table(self.recent_activity_table)
+        self.recent_activity_table.setMinimumHeight(120)
+
+        recent_header = self.recent_activity_table.horizontalHeader()
+        recent_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        recent_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        recent_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+
+        recent_layout.addWidget(self.recent_activity_table)
 
         layout.addWidget(recent_card)
 
@@ -465,7 +531,45 @@ QMainWindow {
             start_artemis()
 
         self.refresh_dynamic_data()
+    def refresh_recent_activity_table(self):
+        recent_items = get_recent_activity(limit=3)
 
+        self.recent_activity_table.setRowCount(0)
+
+        if not recent_items:
+            self.recent_activity_table.insertRow(0)
+            self.recent_activity_table.setItem(0, 0, QTableWidgetItem("—"))
+            self.recent_activity_table.setItem(0, 1, QTableWidgetItem("No activity yet"))
+            self.recent_activity_table.setItem(0, 2, QTableWidgetItem("Drop a file into Downloads to test."))
+            return
+
+        for row, item in enumerate(recent_items):
+            timestamp = item.get("timestamp", 0)
+
+            try:
+                time_text = time.strftime("%H:%M:%S", time.localtime(float(timestamp)))
+            except Exception:
+                time_text = "—"
+
+            action = item.get("action", "Unknown")
+            file_name = item.get("file_name", "Unknown file")
+            destination_path = item.get("destination_path", "")
+            detail = item.get("detail", "")
+
+            if detail:
+                action = f"{action}: {detail}"
+
+            self.recent_activity_table.insertRow(row)
+
+            self.recent_activity_table.setItem(row, 0, QTableWidgetItem(time_text))
+            self.recent_activity_table.setItem(row, 1, QTableWidgetItem(str(action)))
+
+            file_item = QTableWidgetItem(str(file_name))
+
+            if destination_path:
+                file_item.setToolTip(destination_path)
+
+            self.recent_activity_table.setItem(row, 2, file_item)
     # -------------------------
     # Cleanup page
     # -------------------------
@@ -1042,6 +1146,9 @@ QMainWindow {
 
         self.activity_label.setText(f"Activity: {message or 'No current activity'}")
 
+        if self.pages.currentIndex() == self.TAB_PROCESSES:
+            self.refresh_recent_activity_table()
+
         if self.pages.currentIndex() == self.TAB_CLEANUP:
             self.refresh_cleanup_table()
 
@@ -1192,5 +1299,9 @@ class ArtemisTray:
 
 
 if __name__ == "__main__":
+    if not acquire_tray_instance_lock():
+        print("Artemis tray is already running.")
+        sys.exit(0)
+
     tray = ArtemisTray()
     tray.run()

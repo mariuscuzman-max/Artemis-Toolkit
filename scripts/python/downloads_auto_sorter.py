@@ -16,7 +16,7 @@ from artemis.core.rules_engine import (
     find_first_matching_user_rule,
     validate_user_rules_config,
 )
-
+from artemis.core.recent_activity import record_recent_activity
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -322,6 +322,12 @@ def move_archive_to_sorted_archives(file_path: Path, config: dict) -> bool:
         shutil.move(str(file_path), str(destination_path))
         log(f"Moved archive '{file_path.name}' -> '{destination_path}'")
 
+        record_recent_activity(
+            action="Moved archive",
+            source_path=str(file_path),
+            destination_path=str(destination_path),
+        )
+
         # orice arhivă mutată după extract poate fi cleanup candidate
         add_cleanup_item(
             str(destination_path),
@@ -414,6 +420,13 @@ def apply_user_rule(file_path: Path, config: dict) -> bool | None:
 
     if action_type == "skip":
         log(f"User rule skipped '{file_path.name}' via rule: {rule_name}")
+
+        record_recent_activity(
+            action="Skipped by rule",
+            source_path=str(file_path),
+            detail=rule_name,
+        )
+
         return False
 
     if action_type == "move_to":
@@ -436,6 +449,14 @@ def apply_user_rule(file_path: Path, config: dict) -> bool | None:
                 f"User rule moved '{file_path.name}' -> '{destination_path}' "
                 f"via rule: {rule_name}"
             )
+
+            record_recent_activity(
+                action="Moved by rule",
+                source_path=str(file_path),
+                destination_path=str(destination_path),
+                detail=rule_name,
+            )
+
             return True
 
         except Exception as error:
@@ -580,6 +601,12 @@ def move_file_to_category(
     try:
         shutil.move(str(file_path), str(destination_path))
         log(f"Moved '{file_name}' -> '{destination_path}'")
+
+        record_recent_activity(
+            action=f"Moved to {category}",
+            source_path=str(file_path),
+            destination_path=str(destination_path),
+        )
 
         if is_potential_duplicate:
             add_cleanup_item(
