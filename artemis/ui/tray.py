@@ -97,7 +97,29 @@ def open_path_in_explorer(path: Path) -> None:
         os.startfile(str(path))
     except Exception:
         subprocess.Popen(["explorer", str(path)])
+        
+def reveal_file_in_explorer(path: Path) -> None:
+    try:
+        if path.exists():
+            subprocess.Popen(["explorer", "/select,", str(path)])
+        else:
+            parent = path.parent
 
+            if parent.exists():
+                os.startfile(str(parent))
+            else:
+                QMessageBox.warning(
+                    None,
+                    "Artemis",
+                    "File location no longer exists.",
+                )
+    except Exception:
+        QMessageBox.warning(
+            None,
+            "Artemis",
+            "Could not open file location.",
+        )
+        
 def is_existing_tray_running() -> bool:
     if not TRAY_PID_FILE.exists():
         return False
@@ -505,6 +527,15 @@ QMainWindow {
         self.recent_activity_table.setHorizontalHeaderLabels(["Time", "Action", "File"])
         self.configure_table(self.recent_activity_table)
         self.recent_activity_table.setMinimumHeight(120)
+        self.recent_activity_table.cellDoubleClicked.connect(
+            self.open_recent_activity_location
+        )
+        self.recent_activity_table.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.recent_activity_table.customContextMenuRequested.connect(
+            self.show_recent_activity_context_menu
+        )
 
         recent_header = self.recent_activity_table.horizontalHeader()
         recent_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -566,10 +597,61 @@ QMainWindow {
 
             file_item = QTableWidgetItem(str(file_name))
 
-            if destination_path:
-                file_item.setToolTip(destination_path)
+            source_path = item.get("source_path", "")
+            target_path = destination_path or source_path
+
+            if target_path:
+                file_item.setToolTip(target_path)
+                file_item.setData(Qt.ItemDataRole.UserRole, target_path)
 
             self.recent_activity_table.setItem(row, 2, file_item)
+
+    def get_recent_activity_path_from_row(self, row: int) -> str:
+        file_item = self.recent_activity_table.item(row, 2)
+
+        if file_item is None:
+            return ""
+
+        path = file_item.data(Qt.ItemDataRole.UserRole)
+
+        if not path:
+            return ""
+
+        return str(path)
+
+    def open_recent_activity_location(self, row: int, column: int):
+        path_text = self.get_recent_activity_path_from_row(row)
+
+        if not path_text:
+            return
+
+        reveal_file_in_explorer(Path(path_text))
+
+    def show_recent_activity_context_menu(self, position):
+        row = self.recent_activity_table.rowAt(position.y())
+
+        if row < 0:
+            return
+
+        path_text = self.get_recent_activity_path_from_row(row)
+
+        if not path_text:
+            return
+
+        menu = QMenu(self)
+
+        open_location_action = menu.addAction("Open file location")
+        copy_path_action = menu.addAction("Copy file path")
+
+        selected_action = menu.exec(
+            self.recent_activity_table.viewport().mapToGlobal(position)
+        )
+
+        if selected_action == open_location_action:
+            reveal_file_in_explorer(Path(path_text))
+
+        if selected_action == copy_path_action:
+            QApplication.clipboard().setText(path_text)      
     # -------------------------
     # Cleanup page
     # -------------------------
