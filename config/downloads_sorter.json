@@ -9,42 +9,40 @@
     "ehthumbs.db",
     ".ds_store"
   ],
-
   "cleanup": {
-  "min_age_seconds": 604800,
-  "min_total_size_mb": 10
-},
+    "min_age_seconds": 604800,
+    "min_total_size_mb": 10
+  },
   "user_rules": {
-  "enabled": true,
-  "rules": [
-    {
-      "id": "example_pdf_custom_folder",
-      "name": "Example: PDFs to custom folder",
-      "enabled": false,
-      "match": {
-        "type": "extension",
-        "value": ".pdf"
+    "enabled": true,
+    "rules": [
+      {
+        "id": "example_pdf_custom_folder",
+        "name": "Example: PDFs to custom folder",
+        "enabled": false,
+        "match": {
+          "type": "extension",
+          "value": ".pdf"
+        },
+        "action": {
+          "type": "move_to",
+          "destination": "C:\\Users\\mariu\\Downloads\\Sorted\\Custom PDFs"
+        }
       },
-      "action": {
-        "type": "move_to",
-        "destination": "C:\\Users\\mariu\\Downloads\\Sorted\\Custom PDFs"
+      {
+        "id": "example_skip_exe",
+        "name": "Example: skip EXE files",
+        "enabled": false,
+        "match": {
+          "type": "extension",
+          "value": ".exe"
+        },
+        "action": {
+          "type": "skip"
+        }
       }
-    },
-    {
-      "id": "example_skip_exe",
-      "name": "Example: skip EXE files",
-      "enabled": false,
-      "match": {
-        "type": "extension",
-        "value": ".exe"
-      },
-      "action": {
-        "type": "skip"
-      }
-    }
-  ]
-},
-
+    ]
+  },
   "ignored_extensions": [
     ".tmp",
     ".lock",
@@ -70,13 +68,47 @@
   "stability_wait_seconds": 2,
   "min_file_age_seconds": 5,
   "categories": {
-    "Imagini": [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"],
-    "Torrents": [".torrent"],
-    "Documente": [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx"],
-    "Video": [".mp4", ".mkv", ".avi", ".mov", ".webm"],
-    "Audio": [".mp3", ".wav", ".flac", ".ogg"],
-    "Installers": [".exe", ".msi"],
-    "Subtitrari": [".srt", ".sub"],
+    "Imagini": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".webp",
+      ".gif",
+      ".bmp"
+    ],
+    "Torrents": [
+      ".torrent"
+    ],
+    "Documente": [
+      ".pdf",
+      ".docx",
+      ".doc",
+      ".txt",
+      ".xlsx",
+      ".xls",
+      ".pptx"
+    ],
+    "Video": [
+      ".mp4",
+      ".mkv",
+      ".avi",
+      ".mov",
+      ".webm"
+    ],
+    "Audio": [
+      ".mp3",
+      ".wav",
+      ".flac",
+      ".ogg"
+    ],
+    "Installers": [
+      ".exe",
+      ".msi"
+    ],
+    "Subtitrari": [
+      ".srt",
+      ".sub"
+    ],
     "Altele": []
   },
   "unknown_category": "Altele"

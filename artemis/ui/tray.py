@@ -771,12 +771,20 @@ QMainWindow {
 
         self.cleanup_age_input = QLineEdit()
         self.cleanup_age_input.setFixedWidth(120)
-        self.cleanup_age_input.setEnabled(False)
+        self.cleanup_age_input.setEnabled(True)
+        self.cleanup_age_input.setPlaceholderText("7")
+        self.cleanup_age_input.textEdited.connect(
+            lambda: self.mark_settings_dirty()
+        )
 
         self.cleanup_size_input = QLineEdit()
         self.cleanup_size_input.setFixedWidth(120)
-        self.cleanup_size_input.setEnabled(False)
-
+        self.cleanup_size_input.setEnabled(True)
+        self.cleanup_size_input.setPlaceholderText("10")
+        self.cleanup_size_input.textEdited.connect(
+            lambda: self.mark_settings_dirty()
+        )
+        
         self.archive_extensions_input = QLineEdit()
         self.archive_extensions_input.setEnabled(False)
 
@@ -784,10 +792,10 @@ QMainWindow {
             self.make_setting_row("Process existing files on startup", self.process_existing_toggle)
         )
         settings_layout.addWidget(
-            self.make_setting_row("Cleanup reminder age", self.cleanup_age_input)
+            self.make_setting_row("Cleanup reminder age (days)", self.cleanup_age_input)
         )
         settings_layout.addWidget(
-            self.make_setting_row("Cleanup minimum total size", self.cleanup_size_input)
+            self.make_setting_row("Cleanup minimum total size (MB)", self.cleanup_size_input)
         )
         settings_layout.addWidget(
             self.make_setting_row("Archive extensions", self.archive_extensions_input)
@@ -841,11 +849,67 @@ QMainWindow {
         is_enabled = self.process_existing_toggle.isChecked()
         self.process_existing_toggle.setText("On" if is_enabled else "Off")
         self.mark_settings_dirty()
+        
+    def parse_non_negative_float(self, value: str, field_name: str) -> tuple[float | None, str]:
+        cleaned_value = value.strip().replace(",", ".")
 
+        if not cleaned_value:
+            return None, f"{field_name} cannot be empty."
+
+        try:
+            parsed_value = float(cleaned_value)
+        except ValueError:
+            return None, f"{field_name} must be a number."
+
+        if parsed_value < 0:
+            return None, f"{field_name} cannot be negative."
+
+        return parsed_value, ""
+    
     def save_settings(self):
+        cleanup_age_days, cleanup_age_error = self.parse_non_negative_float(
+            self.cleanup_age_input.text(),
+            "Cleanup reminder age",
+        )
+
+        if cleanup_age_error:
+            QMessageBox.warning(
+                self,
+                "Artemis Settings",
+                cleanup_age_error,
+            )
+            return
+
+        cleanup_size_mb, cleanup_size_error = self.parse_non_negative_float(
+            self.cleanup_size_input.text(),
+            "Cleanup minimum total size",
+        )
+
+        if cleanup_size_error:
+            QMessageBox.warning(
+                self,
+                "Artemis Settings",
+                cleanup_size_error,
+            )
+            return
+
         config = load_sorter_config()
 
         config["process_existing_on_startup"] = self.process_existing_toggle.isChecked()
+
+        cleanup_config = config.get("cleanup", {})
+
+        if not isinstance(cleanup_config, dict):
+            cleanup_config = {}
+
+        cleanup_config["min_age_seconds"] = int(cleanup_age_days * 86400)
+
+        if cleanup_size_mb.is_integer():
+            cleanup_config["min_total_size_mb"] = int(cleanup_size_mb)
+        else:
+            cleanup_config["min_total_size_mb"] = cleanup_size_mb
+
+        config["cleanup"] = cleanup_config
 
         success, error_message = save_sorter_config(config)
 
@@ -863,7 +927,7 @@ QMainWindow {
         QMessageBox.information(
             self,
             "Artemis Settings",
-            "Settings saved.\n\nThis setting applies the next time the sorter starts.",
+            "Settings saved.",
         )
 
         self.refresh_settings_preview()
@@ -887,8 +951,8 @@ QMainWindow {
         self.process_existing_toggle.setText("On" if process_existing else "Off")
         self.process_existing_toggle.blockSignals(False)
 
-        self.cleanup_age_input.setText(f"{min_age_days} day(s)")
-        self.cleanup_size_input.setText(f"{min_total_size_mb} MB")
+        self.cleanup_age_input.setText(str(min_age_days))
+        self.cleanup_size_input.setText(str(min_total_size_mb))
         self.archive_extensions_input.setText(", ".join(archive_extensions))
 
         self.save_settings_button.setEnabled(False)
