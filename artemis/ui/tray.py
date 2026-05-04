@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QItemSelectionModel
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
@@ -377,8 +377,25 @@ QMainWindow {
         table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setWordWrap(False)
-        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setVisible(False)    
+    def restore_table_row_selection(self, table: QTableWidget, rows: list[int]) -> None:
+        table.clearSelection()
 
+        selection_model = table.selectionModel()
+
+        if selection_model is None:
+            return
+
+        for row in rows:
+            if row < 0 or row >= table.rowCount():
+                continue
+
+            index = table.model().index(row, 0)
+            selection_model.select(
+                index,
+                QItemSelectionModel.SelectionFlag.Select
+                | QItemSelectionModel.SelectionFlag.Rows,
+            )     
     # -------------------------
     # Processes page
     # -------------------------
@@ -465,13 +482,16 @@ QMainWindow {
         self.cleanup_table.setHorizontalHeaderLabels(["File", "Size", "Reason", "Path"])
         self.configure_table(self.cleanup_table)
 
+        self.cleanup_table.setMinimumHeight(300)
+
         cleanup_header = self.cleanup_table.horizontalHeader()
-        cleanup_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        cleanup_header.setStretchLastSection(False)
+        cleanup_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         cleanup_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         cleanup_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         cleanup_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
 
-        layout.addWidget(self.cleanup_table)
+        layout.addWidget(self.cleanup_table, 1)
 
         button_row = QHBoxLayout()
 
@@ -520,6 +540,8 @@ QMainWindow {
 
         self.cleanup_table.setRowCount(0)
 
+        rows_to_restore = []
+
         for row, item in enumerate(candidates):
             path_text = item.get("path", "")
             path = Path(path_text)
@@ -533,7 +555,9 @@ QMainWindow {
             self.cleanup_table.setItem(row, 3, QTableWidgetItem(path_text))
 
             if path_text in selected_paths:
-                self.cleanup_table.selectRow(row)
+                rows_to_restore.append(row)
+
+        self.restore_table_row_selection(self.cleanup_table, rows_to_restore)
 
     def get_selected_cleanup_candidates(self) -> list[dict]:
         selected_rows = sorted(
@@ -610,14 +634,17 @@ QMainWindow {
         self.rules_table.setHorizontalHeaderLabels(["Enabled", "Name", "Match", "Action", "Destination"])
         self.configure_table(self.rules_table)
 
+        self.rules_table.setMinimumHeight(300)
+
         rules_header = self.rules_table.horizontalHeader()
+        rules_header.setStretchLastSection(False)
         rules_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        rules_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        rules_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         rules_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         rules_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         rules_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
 
-        layout.addWidget(self.rules_table)
+        layout.addWidget(self.rules_table, 1)
 
         button_row = QHBoxLayout()
 
@@ -643,19 +670,23 @@ QMainWindow {
 
         return page
 
-    def get_selected_rule_names_from_table(self) -> set[str]:
+    def get_selected_rule_ids_from_table(self) -> set[str]:
         selected_rows = self.rules_table.selectionModel().selectedRows()
-        names = set()
+        rule_ids = set()
 
         for index in selected_rows:
-            name_item = self.rules_table.item(index.row(), 1)
-            if name_item:
-                names.add(name_item.text())
+            id_item = self.rules_table.item(index.row(), 0)
 
-        return names
+            if id_item:
+                rule_id = id_item.data(Qt.ItemDataRole.UserRole)
+
+                if rule_id:
+                    rule_ids.add(str(rule_id))
+
+        return rule_ids
 
     def refresh_rules_table(self):
-        selected_names = self.get_selected_rule_names_from_table()
+        selected_rule_ids = self.get_selected_rule_ids_from_table()
 
         config = load_sorter_config()
         user_rules = config.get("user_rules", {})
@@ -666,12 +697,14 @@ QMainWindow {
 
         self.rules_table.setRowCount(0)
 
+        rows_to_restore = []
         visible_row = 0
 
         for rule in rules:
             if not isinstance(rule, dict):
                 continue
 
+            rule_id = rule.get("id", "")
             enabled = rule.get("enabled", True)
             name = rule.get("name", "Unnamed rule")
 
@@ -683,18 +716,23 @@ QMainWindow {
             action_type = action.get("type", "")
             destination = action.get("destination", "")
 
+            enabled_item = QTableWidgetItem("Yes" if enabled else "No")
+            enabled_item.setData(Qt.ItemDataRole.UserRole, str(rule_id))
+
             self.rules_table.insertRow(visible_row)
 
-            self.rules_table.setItem(visible_row, 0, QTableWidgetItem("Yes" if enabled else "No"))
+            self.rules_table.setItem(visible_row, 0, enabled_item)
             self.rules_table.setItem(visible_row, 1, QTableWidgetItem(str(name)))
             self.rules_table.setItem(visible_row, 2, QTableWidgetItem(f"{match_type}: {match_value}"))
             self.rules_table.setItem(visible_row, 3, QTableWidgetItem(str(action_type)))
             self.rules_table.setItem(visible_row, 4, QTableWidgetItem(str(destination)))
 
-            if str(name) in selected_names:
-                self.rules_table.selectRow(visible_row)
+            if str(rule_id) in selected_rule_ids:
+                rows_to_restore.append(visible_row)
 
             visible_row += 1
+
+        self.restore_table_row_selection(self.rules_table, rows_to_restore)
 
     # -------------------------
     # Settings page
