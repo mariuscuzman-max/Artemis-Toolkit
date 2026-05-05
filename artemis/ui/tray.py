@@ -25,6 +25,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QCheckBox,
+    QComboBox,
+    QFileDialog,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -282,6 +284,48 @@ QMainWindow {
 
             QPushButton#DonateButton:hover {
                 background-color: #7be7e3;
+            }
+
+            QPushButton#PrimaryButton {
+                background-color: __ACCENT__;
+                color: #101010;
+                border: none;
+                border-radius: 10px;
+                padding: 10px 16px;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            QPushButton#PrimaryButton:hover {
+                background-color: #7be7e3;
+            }
+
+            QPushButton#EnableButton {
+                background-color: #2f7d4f;
+                color: #ffffff;
+                border: none;
+                border-radius: 10px;
+                padding: 10px 16px;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            QPushButton#EnableButton:hover {
+                background-color: #3b9660;
+            }
+
+            QPushButton#DisableButton {
+                background-color: #8a3a3a;
+                color: #ffffff;
+                border: none;
+                border-radius: 10px;
+                padding: 10px 16px;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            QPushButton#DisableButton:hover {
+                background-color: #a34646;
             }
 
             QFrame#Card {
@@ -824,6 +868,52 @@ QMainWindow {
 
         layout.addWidget(info_card)
 
+        add_rule_card, add_rule_layout = self.make_card()
+
+        add_rule_title = QLabel("Add extension rule")
+        add_rule_title.setStyleSheet("font-size: 17px; font-weight: 600;")
+
+        add_rule_hint = QLabel("MVP: choose one extension, one action, and optionally a destination folder.")
+        add_rule_hint.setObjectName("MutedLabel")
+
+        self.rule_extension_input = QLineEdit()
+        self.rule_extension_input.setPlaceholderText(".pdf")
+
+        self.rule_action_combo = QComboBox()
+        self.rule_action_combo.addItems(["move_to", "skip"])
+        self.rule_action_combo.currentTextChanged.connect(self.on_rule_action_changed)
+
+        self.rule_destination_input = QLineEdit()
+        self.rule_destination_input.setPlaceholderText("Destination folder for move_to")
+
+        browse_destination_button = QPushButton("Browse")
+        browse_destination_button.clicked.connect(self.browse_rule_destination)
+
+        add_rule_button = QPushButton("Add rule")
+        add_rule_button.setObjectName("PrimaryButton")
+        add_rule_button.clicked.connect(self.add_extension_rule)
+
+        add_rule_layout.addWidget(add_rule_title)
+        add_rule_layout.addWidget(add_rule_hint)
+
+        rule_row_1 = QHBoxLayout()
+        rule_row_1.addWidget(QLabel("Extension"))
+        rule_row_1.addWidget(self.rule_extension_input)
+        rule_row_1.addWidget(QLabel("Action"))
+        rule_row_1.addWidget(self.rule_action_combo)
+        rule_row_1.addStretch()
+
+        rule_row_2 = QHBoxLayout()
+        rule_row_2.addWidget(QLabel("Destination"))
+        rule_row_2.addWidget(self.rule_destination_input)
+        rule_row_2.addWidget(browse_destination_button)
+        rule_row_2.addWidget(add_rule_button)
+
+        add_rule_layout.addLayout(rule_row_1)
+        add_rule_layout.addLayout(rule_row_2)
+
+        layout.addWidget(add_rule_card)
+
         self.rules_table = QTableWidget()
         self.rules_table.setColumnCount(5)
         self.rules_table.setHorizontalHeaderLabels(["Enabled", "Name", "Match", "Action", "Destination"])
@@ -847,9 +937,11 @@ QMainWindow {
         refresh_button.clicked.connect(self.refresh_rules_table)
 
         enable_button = QPushButton("Enable selected")
+        enable_button.setObjectName("EnableButton")
         enable_button.clicked.connect(lambda: self.set_selected_rules_enabled(True))
 
         disable_button = QPushButton("Disable selected")
+        disable_button.setObjectName("DisableButton")
         disable_button.clicked.connect(lambda: self.set_selected_rules_enabled(False))
 
         add_button = QPushButton("Add rule later")
@@ -887,6 +979,139 @@ QMainWindow {
                     rule_ids.add(str(rule_id))
 
         return rule_ids
+
+    def normalize_rule_extension_input(self, value: str) -> str:
+        extension = value.strip().lower()
+
+        if not extension:
+            return ""
+
+        if not extension.startswith("."):
+            extension = "." + extension
+
+        if extension == ".":
+            return ""
+
+        if " " in extension:
+            return ""
+
+        return extension
+
+    def on_rule_action_changed(self):
+        action = self.rule_action_combo.currentText()
+
+        is_move_rule = action == "move_to"
+
+        self.rule_destination_input.setEnabled(is_move_rule)
+
+        if not is_move_rule:
+            self.rule_destination_input.clear()
+
+    def browse_rule_destination(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Choose destination folder",
+            str(Path.home()),
+        )
+
+        if folder:
+            self.rule_destination_input.setText(folder)
+
+    def add_extension_rule(self):
+        extension = self.normalize_rule_extension_input(
+            self.rule_extension_input.text()
+        )
+
+        if not extension:
+            QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                "Enter a valid extension, for example .pdf or jpg.",
+            )
+            return
+
+        action_type = self.rule_action_combo.currentText()
+
+        action = {
+            "type": action_type,
+        }
+
+        if action_type == "move_to":
+            destination = self.rule_destination_input.text().strip()
+
+            if not destination:
+                QMessageBox.warning(
+                    self,
+                    "Artemis Rules",
+                    "Choose a destination folder for move_to rules.",
+                )
+                return
+
+            destination_path = Path(destination).expanduser()
+
+            if not destination_path.exists() or not destination_path.is_dir():
+                QMessageBox.warning(
+                    self,
+                    "Artemis Rules",
+                    "Destination folder does not exist.",
+                )
+                return
+
+            action["destination"] = str(destination_path)
+
+        config = load_sorter_config()
+        user_rules = config.get("user_rules", {})
+
+        if not isinstance(user_rules, dict):
+            user_rules = {}
+
+        rules = user_rules.get("rules", [])
+
+        if not isinstance(rules, list):
+            rules = []
+
+        rule_id = f"user_rule_{extension.replace('.', '')}_{int(time.time())}"
+
+        if action_type == "skip":
+            rule_name = f"Skip {extension} files"
+        else:
+            rule_name = f"Move {extension} files"
+
+        rules.append({
+            "id": rule_id,
+            "name": rule_name,
+            "enabled": True,
+            "match": {
+                "type": "extension",
+                "value": extension,
+            },
+            "action": action,
+        })
+
+        user_rules["enabled"] = True
+        user_rules["rules"] = rules
+        config["user_rules"] = user_rules
+
+        success, error_message = save_sorter_config(config)
+
+        if not success:
+            QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                f"Could not save rule:\n\n{error_message}",
+            )
+            return
+
+        self.rule_extension_input.clear()
+        self.rule_destination_input.clear()
+
+        self.refresh_rules_table()
+
+        QMessageBox.information(
+            self,
+            "Artemis Rules",
+            f"Added rule for {extension}.",
+        )
 
     def set_selected_rules_enabled(self, enabled: bool):
         selected_rule_ids = self.get_selected_rule_ids_from_table()
@@ -972,6 +1197,15 @@ QMainWindow {
             rules = []
 
         self.rules_table.setRowCount(0)
+
+        if not rules:
+            self.rules_table.insertRow(0)
+            self.rules_table.setItem(0, 0, QTableWidgetItem("?"))
+            self.rules_table.setItem(0, 1, QTableWidgetItem("No custom rules yet"))
+            self.rules_table.setItem(0, 2, QTableWidgetItem("Default sorting is active"))
+            self.rules_table.setItem(0, 3, QTableWidgetItem("?"))
+            self.rules_table.setItem(0, 4, QTableWidgetItem("Add a rule above to customize sorting."))
+            return
 
         rows_to_restore = []
         visible_row = 0
