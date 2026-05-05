@@ -758,7 +758,6 @@ QMainWindow {
         postpone_button = QPushButton("Postpone selected")
         postpone_button.clicked.connect(self.postpone_selected_cleanup_items)
 
-        button_row.addWidget(refresh_button)
         button_row.addWidget(delete_button)
         button_row.addWidget(postpone_button)
         button_row.addStretch()
@@ -948,9 +947,6 @@ QMainWindow {
 
         button_row = QHBoxLayout()
 
-        refresh_button = QPushButton("Refresh rules")
-        refresh_button.clicked.connect(self.refresh_rules_table)
-
         enable_button = QPushButton("Enable selected")
         enable_button.setObjectName("EnableButton")
         enable_button.clicked.connect(lambda: self.set_selected_rules_enabled(True))
@@ -963,7 +959,6 @@ QMainWindow {
         delete_button.setObjectName("DeleteButton")
         delete_button.clicked.connect(self.delete_selected_rules)
 
-        button_row.addWidget(refresh_button)
         button_row.addWidget(enable_button)
         button_row.addWidget(disable_button)
         button_row.addStretch()
@@ -1370,11 +1365,11 @@ QMainWindow {
 
         settings_card, settings_layout = self.make_card()
 
-        self.settings_summary_label = QLabel("Editable settings preview")
+        self.settings_summary_label = QLabel("Cleanup and sorting settings")
         self.settings_summary_label.setStyleSheet("font-size: 17px; font-weight: 600;")
 
         settings_hint = QLabel(
-            "Process existing files can now be edited. Other settings are still read-only previews."
+            "Control when Artemis shows cleanup suggestions and how the sorter behaves."
         )
         settings_hint.setObjectName("MutedLabel")
 
@@ -1410,11 +1405,20 @@ QMainWindow {
             self.make_setting_row("Process existing files on startup", self.process_existing_toggle)
         )
         settings_layout.addWidget(
-            self.make_setting_row("Cleanup reminder age (days)", self.cleanup_age_input)
+            self.make_setting_row("Show cleanup items after this many days", self.cleanup_age_input)
         )
         settings_layout.addWidget(
-            self.make_setting_row("Cleanup minimum total size (MB)", self.cleanup_size_input)
+            self.make_setting_row("Minimum combined cleanup size before showing items", self.cleanup_size_input)
         )
+
+        cleanup_logic_hint = QLabel(
+            "For immediate testing, set both cleanup values to 0. "
+            "Artemis only shows cleanup items when both age and size rules pass."
+        )
+        cleanup_logic_hint.setObjectName("MutedLabel")
+        cleanup_logic_hint.setWordWrap(True)
+        settings_layout.addWidget(cleanup_logic_hint)
+
         settings_layout.addWidget(
             self.make_setting_row("Archive extensions", self.archive_extensions_input)
         )
