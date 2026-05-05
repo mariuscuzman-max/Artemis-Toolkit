@@ -315,7 +315,7 @@ QMainWindow {
             }
 
             QPushButton#DisableButton {
-                background-color: #8a3a3a;
+                background-color: #8a6a2f;
                 color: #ffffff;
                 border: none;
                 border-radius: 10px;
@@ -325,6 +325,20 @@ QMainWindow {
             }
 
             QPushButton#DisableButton:hover {
+                background-color: #a37d38;
+            }
+
+            QPushButton#DeleteButton {
+                background-color: #8a3a3a;
+                color: #ffffff;
+                border: none;
+                border-radius: 10px;
+                padding: 10px 16px;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            QPushButton#DeleteButton:hover {
                 background-color: #a34646;
             }
 
@@ -944,22 +958,19 @@ QMainWindow {
         disable_button.setObjectName("DisableButton")
         disable_button.clicked.connect(lambda: self.set_selected_rules_enabled(False))
 
-        add_button = QPushButton("Add rule later")
-        add_button.setEnabled(False)
-
         edit_button = QPushButton("Edit later")
         edit_button.setEnabled(False)
 
-        delete_button = QPushButton("Delete later")
-        delete_button.setEnabled(False)
+        delete_button = QPushButton("Delete selected")
+        delete_button.setObjectName("DeleteButton")
+        delete_button.clicked.connect(self.delete_selected_rules)
 
         button_row.addWidget(refresh_button)
         button_row.addWidget(enable_button)
         button_row.addWidget(disable_button)
-        button_row.addWidget(add_button)
         button_row.addWidget(edit_button)
-        button_row.addWidget(delete_button)
         button_row.addStretch()
+        button_row.addWidget(delete_button)
 
         layout.addLayout(button_row)
 
@@ -1184,6 +1195,92 @@ QMainWindow {
             self,
             "Artemis Rules",
             f"Updated {updated_count} rule(s).",
+        )
+
+    def delete_selected_rules(self):
+        selected_rule_ids = self.get_selected_rule_ids_from_table()
+
+        if not selected_rule_ids:
+            QMessageBox.information(
+                self,
+                "Artemis Rules",
+                "Select at least one rule first.",
+            )
+            return
+
+        result = QMessageBox.question(
+            self,
+            "Delete rule",
+            f"Delete {len(selected_rule_ids)} selected rule(s)?\n\nThis cannot be undone.",
+        )
+
+        if result != QMessageBox.StandardButton.Yes:
+            return
+
+        config = load_sorter_config()
+        user_rules = config.get("user_rules", {})
+
+        if not isinstance(user_rules, dict):
+            QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                "user_rules config is missing or invalid.",
+            )
+            return
+
+        rules = user_rules.get("rules", [])
+
+        if not isinstance(rules, list):
+            QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                "user_rules.rules must be a list.",
+            )
+            return
+
+        kept_rules = []
+        deleted_count = 0
+
+        for rule in rules:
+            if not isinstance(rule, dict):
+                kept_rules.append(rule)
+                continue
+
+            rule_id = str(rule.get("id", ""))
+
+            if rule_id in selected_rule_ids:
+                deleted_count += 1
+                continue
+
+            kept_rules.append(rule)
+
+        if deleted_count == 0:
+            QMessageBox.information(
+                self,
+                "Artemis Rules",
+                "No matching rules were deleted.",
+            )
+            return
+
+        user_rules["rules"] = kept_rules
+        config["user_rules"] = user_rules
+
+        success, error_message = save_sorter_config(config)
+
+        if not success:
+            QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                f"Could not delete rule(s):\n\n{error_message}",
+            )
+            return
+
+        self.refresh_rules_table()
+
+        QMessageBox.information(
+            self,
+            "Artemis Rules",
+            f"Deleted {deleted_count} rule(s).",
         )
 
     def refresh_rules_table(self):
