@@ -1,6 +1,7 @@
 import atexit
 import json
 import os
+from re import match
 import subprocess
 import sys
 import time
@@ -1080,7 +1081,30 @@ QMainWindow {
 
         if not isinstance(rules, list):
             rules = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
 
+            match = rule.get("match", {})
+
+            if not isinstance(match, dict):
+                continue
+
+            existing_match_type = match.get("type", "")
+            existing_match_value = self.normalize_rule_extension_input(
+                str(match.get("value", ""))
+            )
+
+            if existing_match_type == "extension" and existing_match_value == extension:
+                QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                (
+                    f"A rule for {extension} already exists.\n\n"
+                    "Delete or disable the existing rule before adding another one."
+                ),
+            )
+            return        
         rule_id = f"user_rule_{extension.replace('.', '')}_{int(time.time())}"
 
         if action_type == "skip":
