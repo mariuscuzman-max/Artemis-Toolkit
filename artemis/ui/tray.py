@@ -872,10 +872,10 @@ QMainWindow {
 
         info_card, info_layout = self.make_card()
 
-        info_label = QLabel("User rules from downloads_sorter.json")
+        info_label = QLabel("Create your own sorting rules")
         info_label.setStyleSheet("font-size: 17px; font-weight: 600;")
 
-        info_hint = QLabel("Select existing rules, then enable or disable them. Rule creation/editing comes later.")
+        info_hint = QLabel("Choose what goes where by creating simple rules for specific file types.")
         info_hint.setObjectName("MutedLabel")
 
         info_layout.addWidget(info_label)
@@ -888,7 +888,7 @@ QMainWindow {
         add_rule_title = QLabel("Add extension rule")
         add_rule_title.setStyleSheet("font-size: 17px; font-weight: 600;")
 
-        add_rule_hint = QLabel("MVP: choose one extension, one action, and optionally a destination folder.")
+        add_rule_hint = QLabel("Choose one extension and one action. To change a rule, delete it and add a new one.")
         add_rule_hint.setObjectName("MutedLabel")
 
         self.rule_extension_input = QLineEdit()
@@ -959,9 +959,6 @@ QMainWindow {
         disable_button.setObjectName("DisableButton")
         disable_button.clicked.connect(lambda: self.set_selected_rules_enabled(False))
 
-        edit_button = QPushButton("Edit later")
-        edit_button.setEnabled(False)
-
         delete_button = QPushButton("Delete selected")
         delete_button.setObjectName("DeleteButton")
         delete_button.clicked.connect(self.delete_selected_rules)
@@ -969,7 +966,6 @@ QMainWindow {
         button_row.addWidget(refresh_button)
         button_row.addWidget(enable_button)
         button_row.addWidget(disable_button)
-        button_row.addWidget(edit_button)
         button_row.addStretch()
         button_row.addWidget(delete_button)
 
