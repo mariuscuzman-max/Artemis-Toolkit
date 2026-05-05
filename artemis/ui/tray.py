@@ -421,7 +421,7 @@ QMainWindow {
         app_title.setStyleSheet("font-size: 16px; font-weight: 600; margin-bottom: 24px;")
         sidebar_layout.addWidget(app_title)
 
-        self.btn_processes = self.create_sidebar_button("Processes", self.TAB_PROCESSES)
+        self.btn_processes = self.create_sidebar_button("Status", self.TAB_PROCESSES)
         self.btn_cleanup = self.create_sidebar_button("Cleanup", self.TAB_CLEANUP)
         self.btn_customize = self.create_sidebar_button("Customize", self.TAB_CUSTOMIZE)
         self.btn_settings = self.create_sidebar_button("Settings", self.TAB_SETTINGS)
@@ -547,7 +547,7 @@ QMainWindow {
     # -------------------------
 
     def build_processes_page(self) -> QWidget:
-        page, layout = self.make_page("Processes")
+        page, layout = self.make_page("Status")
 
         status_title = QLabel("Current Status")
         status_title.setObjectName("SectionTitle")
@@ -1654,11 +1654,20 @@ QMainWindow {
         message = activity.get("message", "")
 
         if running:
-            self.status_label.setText(f"● Sorter running — {state}")
+            if state == "active":
+                status_text = " Status: Working"
+            elif state == "error":
+                status_text = " Status: Error"
+            elif state == "waiting":
+                status_text = " Status: Waiting"
+            else:
+                status_text = " Status: Active (Monitoring)"
+
+            self.status_label.setText(status_text)
             self.status_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #57d26a;")
             self.start_stop_button.setText("Stop Sorter")
         else:
-            self.status_label.setText("● Sorter stopped")
+            self.status_label.setText("? Status: Stopped")
             self.status_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #d65f5f;")
             self.start_stop_button.setText("Start Sorter")
 
@@ -1725,7 +1734,7 @@ class ArtemisTray:
 
         menu.addSeparator()
 
-        processes_action = menu.addAction("Processes")
+        processes_action = menu.addAction("Status")
         processes_action.triggered.connect(lambda: self.open_window(ArtemisMainWindow.TAB_PROCESSES))
 
         cleanup_action = menu.addAction("Cleanup")
