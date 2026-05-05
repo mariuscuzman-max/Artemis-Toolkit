@@ -816,7 +816,7 @@ QMainWindow {
         info_label = QLabel("User rules from downloads_sorter.json")
         info_label.setStyleSheet("font-size: 17px; font-weight: 600;")
 
-        info_hint = QLabel("This sprint only displays existing rules. Rule creation/editing comes later.")
+        info_hint = QLabel("Select existing rules, then enable or disable them. Rule creation/editing comes later.")
         info_hint.setObjectName("MutedLabel")
 
         info_layout.addWidget(info_label)
@@ -846,6 +846,12 @@ QMainWindow {
         refresh_button = QPushButton("Refresh rules")
         refresh_button.clicked.connect(self.refresh_rules_table)
 
+        enable_button = QPushButton("Enable selected")
+        enable_button.clicked.connect(lambda: self.set_selected_rules_enabled(True))
+
+        disable_button = QPushButton("Disable selected")
+        disable_button.clicked.connect(lambda: self.set_selected_rules_enabled(False))
+
         add_button = QPushButton("Add rule later")
         add_button.setEnabled(False)
 
@@ -856,6 +862,8 @@ QMainWindow {
         delete_button.setEnabled(False)
 
         button_row.addWidget(refresh_button)
+        button_row.addWidget(enable_button)
+        button_row.addWidget(disable_button)
         button_row.addWidget(add_button)
         button_row.addWidget(edit_button)
         button_row.addWidget(delete_button)
@@ -879,6 +887,79 @@ QMainWindow {
                     rule_ids.add(str(rule_id))
 
         return rule_ids
+
+    def set_selected_rules_enabled(self, enabled: bool):
+        selected_rule_ids = self.get_selected_rule_ids_from_table()
+
+        if not selected_rule_ids:
+            QMessageBox.information(
+                self,
+                "Artemis Rules",
+                "Select at least one rule first.",
+            )
+            return
+
+        config = load_sorter_config()
+        user_rules = config.get("user_rules", {})
+
+        if not isinstance(user_rules, dict):
+            QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                "user_rules config is missing or invalid.",
+            )
+            return
+
+        rules = user_rules.get("rules", [])
+
+        if not isinstance(rules, list):
+            QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                "user_rules.rules must be a list.",
+            )
+            return
+
+        updated_count = 0
+
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+
+            rule_id = str(rule.get("id", ""))
+
+            if rule_id in selected_rule_ids:
+                rule["enabled"] = enabled
+                updated_count += 1
+
+        if updated_count == 0:
+            QMessageBox.information(
+                self,
+                "Artemis Rules",
+                "No matching rules were changed.",
+            )
+            return
+
+        user_rules["rules"] = rules
+        config["user_rules"] = user_rules
+
+        success, error_message = save_sorter_config(config)
+
+        if not success:
+            QMessageBox.warning(
+                self,
+                "Artemis Rules",
+                f"Could not save rules:\n\n{error_message}",
+            )
+            return
+
+        self.refresh_rules_table()
+
+        QMessageBox.information(
+            self,
+            "Artemis Rules",
+            f"Updated {updated_count} rule(s).",
+        )
 
     def refresh_rules_table(self):
         selected_rule_ids = self.get_selected_rule_ids_from_table()
