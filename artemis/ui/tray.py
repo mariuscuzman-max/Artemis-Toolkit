@@ -1785,6 +1785,7 @@ class ArtemisTray:
         activity = get_artemis_activity()
         state = activity.get("state", "idle")
 
+        clean_invalid_items()
         cleanup_count, cleanup_size = get_cleanup_stats()
         cleanup_mb = round(cleanup_size / (1024 * 1024), 1)
 
