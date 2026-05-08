@@ -662,9 +662,7 @@ def acquire_lock() -> bool:
         try:
             existing_pid = int(PID_FILE.read_text().strip())
 
-            import psutil
-
-            if psutil.pid_exists(existing_pid):
+            if is_existing_sorter_running(existing_pid):
                 log(
                     "Downloads sorter is already running. Exiting duplicate instance.",
                     level="WARNING",
@@ -698,6 +696,25 @@ def acquire_lock() -> bool:
 
     except Exception as error:
         log(f"Failed to create runtime files: {error}", level="ERROR")
+        return False
+
+
+def is_existing_sorter_running(pid: int) -> bool:
+    try:
+        import psutil
+
+        if not psutil.pid_exists(pid):
+            return False
+
+        process = psutil.Process(pid)
+        cmdline = " ".join(process.cmdline()).lower()
+
+        return (
+            "downloads_auto_sorter.py" in cmdline
+            or "scripts.python.downloads_auto_sorter" in cmdline
+        )
+
+    except Exception:
         return False
 
 
