@@ -4,6 +4,7 @@ from logging import config
 import os
 import shutil
 import sys
+import threading
 import time
 import tkinter as tk
 import zipfile
@@ -638,18 +639,21 @@ def move_file_to_category(
 
 
 class DownloadsHandler(FileSystemEventHandler):
-    def __init__(self, pending_files: set[str]):
+    def __init__(self, pending_files: set[str], pending_files_lock: threading.Lock):
         self.pending_files = pending_files
+        self.pending_files_lock = pending_files_lock
 
     def on_created(self, event):
         if event.is_directory:
             return
-        self.pending_files.add(event.src_path)
+        with self.pending_files_lock:
+            self.pending_files.add(event.src_path)
 
     def on_modified(self, event):
         if event.is_directory:
             return
-        self.pending_files.add(event.src_path)
+        with self.pending_files_lock:
+            self.pending_files.add(event.src_path)
 
 def acquire_lock() -> bool:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
@@ -748,14 +752,16 @@ def main():
             raise FileNotFoundError(f"Watch folder does not exist: {watch_folder}")
 
         pending_files: set[str] = set()
+        pending_files_lock = threading.Lock()
 
         process_existing_on_startup = config.get("process_existing_on_startup", True)
         if process_existing_on_startup:
             for item in watch_folder.iterdir():
                 if item.is_file():
-                    pending_files.add(str(item))
+                    with pending_files_lock:
+                        pending_files.add(str(item))
 
-        event_handler = DownloadsHandler(pending_files)
+        event_handler = DownloadsHandler(pending_files, pending_files_lock)
         observer = Observer()
         observer.schedule(event_handler, str(watch_folder), recursive=False)
         observer.start()
@@ -779,10 +785,13 @@ def main():
                 write_activity_state("idle", "Stopped")
                 break
 
-            if not pending_files:
+            with pending_files_lock:
+                pending_snapshot = list(pending_files)
+
+            if not pending_snapshot:
                 write_activity_state("idle", "Watching Downloads")
 
-            for file_str in list(pending_files):
+            for file_str in pending_snapshot:
                 if stop_requested():
                     log("Stop signal detected. Shutting down sorter.")
                     write_activity_state("idle", "Stopped")
@@ -791,7 +800,8 @@ def main():
                 file_path = Path(file_str)
 
                 if not file_path.exists():
-                    pending_files.discard(file_str)
+                    with pending_files_lock:
+                        pending_files.discard(file_str)
                     continue
 
                 write_activity_state("active", f"Checking {file_path.name}")
@@ -806,12 +816,14 @@ def main():
 
                 if moved:
                     write_activity_state("idle", "Watching Downloads")
-                    pending_files.discard(file_str)
+                    with pending_files_lock:
+                        pending_files.discard(file_str)
                     continue
 
                 if is_ignored_file(file_path.name, config):
                     write_activity_state("idle", "Watching Downloads")
-                    pending_files.discard(file_str)
+                    with pending_files_lock:
+                        pending_files.discard(file_str)
                     continue
 
                 file_key = get_file_key(file_path)
@@ -819,17 +831,20 @@ def main():
                 if is_archive(file_path.name, config):
                     if not is_zip_file(file_path):
                         write_activity_state("idle", "Watching Downloads")
-                        pending_files.discard(file_str)
+                        with pending_files_lock:
+                            pending_files.discard(file_str)
                         continue
 
                     if file_key in skipped_archives or file_key in processed_archives:
                         write_activity_state("idle", "Watching Downloads")
-                        pending_files.discard(file_str)
+                        with pending_files_lock:
+                            pending_files.discard(file_str)
                         continue
 
                 if is_user_skip_rule_match(file_path, config):
                     write_activity_state("idle", "Watching Downloads")
-                    pending_files.discard(file_str)
+                    with pending_files_lock:
+                        pending_files.discard(file_str)
                     continue
 
                 write_activity_state("idle", "Watching Downloads")
