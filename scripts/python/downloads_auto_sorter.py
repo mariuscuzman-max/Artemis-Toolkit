@@ -1,4 +1,4 @@
-from email import message
+﻿from email import message
 import json
 from logging import config
 import os
@@ -35,6 +35,20 @@ PID_FILE = RUNTIME_DIR / "artemis.pid"
 STOP_FILE = RUNTIME_DIR / "artemis.stop"
 ACTIVITY_FILE = RUNTIME_DIR / "artemis_activity.json"
 
+def stop_requested() -> bool:
+    return STOP_FILE.exists()
+
+
+def sleep_with_stop_check(seconds: float, interval: float = 0.1) -> bool:
+    deadline = time.time() + seconds
+
+    while time.time() < deadline:
+        if stop_requested():
+            return True
+
+        time.sleep(interval)
+
+    return stop_requested()
 
 def log(message: str, level: str = "INFO") -> None:
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -672,7 +686,7 @@ def acquire_lock() -> bool:
         LOCK_FILE.write_text(f"{get_now_ts()}|{pid}", encoding="utf-8")
         PID_FILE.write_text(str(pid), encoding="utf-8")
 
-        if STOP_FILE.exists():
+        if stop_requested():
             STOP_FILE.unlink()
 
         log(f"Lock acquired. PID: {pid}")
@@ -760,7 +774,7 @@ def main():
                 clean_invalid_items()
                 last_cleanup_run = now
 
-            if STOP_FILE.exists():
+            if stop_requested():
                 log("Stop signal detected. Shutting down sorter.")
                 write_activity_state("idle", "Stopped")
                 break
@@ -769,6 +783,11 @@ def main():
                 write_activity_state("idle", "Watching Downloads")
 
             for file_str in list(pending_files):
+                if stop_requested():
+                    log("Stop signal detected. Shutting down sorter.")
+                    write_activity_state("idle", "Stopped")
+                    return
+
                 file_path = Path(file_str)
 
                 if not file_path.exists():
@@ -815,7 +834,10 @@ def main():
 
                 write_activity_state("idle", "Watching Downloads")
 
-            time.sleep(2)
+            if sleep_with_stop_check(2):
+                log("Stop signal detected. Shutting down sorter.")
+                write_activity_state("idle", "Stopped")
+                break
 
     except KeyboardInterrupt:
         log("Stopping downloads auto sorter.")

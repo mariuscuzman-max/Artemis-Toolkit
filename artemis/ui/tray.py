@@ -188,7 +188,7 @@ class ArtemisMainWindow(QMainWindow):
         self.setMinimumSize(940, 580)
 
         self.current_cleanup_candidates = []
-        self.settings_dirty = False
+        self.stop_requested = False
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #202020;
@@ -615,7 +615,13 @@ QMainWindow {
         return page
 
     def toggle_sorter(self):
+        if self.stop_requested:
+            return
+
         if is_artemis_running():
+            self.stop_requested = True
+            self.start_stop_button.setEnabled(False)
+            self.start_stop_button.setText("Stopping...")
             stop_artemis()
         else:
             start_artemis()
@@ -1648,6 +1654,9 @@ QMainWindow {
 
     def refresh_dynamic_data(self):
         running = is_artemis_running()
+        if self.stop_requested and not running:
+            self.stop_requested = False
+        self.start_stop_button.setEnabled(True)
         activity = get_artemis_activity()
 
         state = activity.get("state", "idle")
@@ -1667,7 +1676,7 @@ QMainWindow {
             self.status_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #57d26a;")
             self.start_stop_button.setText("Stop Sorter")
         else:
-            self.status_label.setText("? Status: Stopped")
+            self.status_label.setText("Status: Stopped")
             self.status_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #d65f5f;")
             self.start_stop_button.setText("Start Sorter")
 
