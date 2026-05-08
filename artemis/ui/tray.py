@@ -1,4 +1,4 @@
-import atexit
+﻿import atexit
 import json
 import os
 from re import match
@@ -41,6 +41,7 @@ from artemis.core.cleanup_tracker import (
     get_cleanup_stats,
     postpone_cleanup_items,
     delete_cleanup_items,
+    clean_invalid_items,
 )
 from scripts.python.artemis_control import (
     get_artemis_activity,
@@ -784,6 +785,7 @@ QMainWindow {
         return paths
 
     def refresh_cleanup_table(self):
+        clean_invalid_items()
         selected_paths = self.get_selected_cleanup_paths_from_table()
 
         candidates = get_cleanup_candidates()
