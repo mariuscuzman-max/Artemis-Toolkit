@@ -1096,14 +1096,14 @@ QMainWindow {
 
             if existing_match_type == "extension" and existing_match_value == extension:
                 QMessageBox.warning(
-                self,
-                "Artemis Rules",
-                (
-                    f"A rule for {extension} already exists.\n\n"
-                    "Delete or disable the existing rule before adding another one."
-                ),
-            )
-            return        
+                    self,
+                    "Artemis Rules",
+                    (
+                        f"A rule for {extension} already exists.\n\n"
+                        "Delete or disable the existing rule before adding another one."
+                    ),
+                )
+                return
         rule_id = f"user_rule_{extension.replace('.', '')}_{int(time.time())}"
 
         if action_type == "skip":
