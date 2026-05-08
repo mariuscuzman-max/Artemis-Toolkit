@@ -1658,7 +1658,7 @@ QMainWindow {
         running = is_artemis_running()
         if self.stop_requested and not running:
             self.stop_requested = False
-        self.start_stop_button.setEnabled(True)
+        self.start_stop_button.setEnabled(not self.stop_requested)
         activity = get_artemis_activity()
 
         state = activity.get("state", "idle")
@@ -1676,7 +1676,10 @@ QMainWindow {
 
             self.status_label.setText(status_text)
             self.status_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #57d26a;")
-            self.start_stop_button.setText("Stop Sorter")
+            if self.stop_requested:
+                self.start_stop_button.setText("Stopping...")
+            else:
+                self.start_stop_button.setText("Stop Sorter")
         else:
             self.status_label.setText("Status: Stopped")
             self.status_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #d65f5f;")
