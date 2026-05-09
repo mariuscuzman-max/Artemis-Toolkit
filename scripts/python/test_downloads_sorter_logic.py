@@ -1,7 +1,13 @@
+import os
 import tempfile
 import time
 import zipfile
 from pathlib import Path
+
+os.environ.setdefault(
+    "ARTEMIS_APPDATA_DIR",
+    tempfile.mkdtemp(prefix="artemis_logic_appdata_"),
+)
 
 from downloads_auto_sorter import (
     is_ignored_file,

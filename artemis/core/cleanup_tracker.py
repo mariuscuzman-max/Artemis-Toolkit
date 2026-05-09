@@ -2,12 +2,12 @@ import json
 import time
 from pathlib import Path
 
+from artemis.core.path_utils import get_sorter_config_path, get_user_runtime_dir
 from artemis.core.rules_engine import get_cleanup_candidates_by_threshold
 
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-RUNTIME_DIR = ROOT_DIR / "runtime"
+RUNTIME_DIR = get_user_runtime_dir()
 CLEANUP_FILE = RUNTIME_DIR / "cleanup_queue.json"
 
 
@@ -22,7 +22,7 @@ def load_cleanup():
 
 
 def save_cleanup(data):
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    CLEANUP_FILE.parent.mkdir(parents=True, exist_ok=True)
     CLEANUP_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
@@ -52,7 +52,7 @@ def get_cleanup_stats():
 
     return count, total_size
 
-CONFIG_FILE = ROOT_DIR / "config" / "downloads_sorter.json"
+CONFIG_FILE = get_sorter_config_path()
 
 
 def load_cleanup_config() -> dict:

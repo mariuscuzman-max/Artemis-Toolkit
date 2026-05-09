@@ -1,8 +1,8 @@
 from datetime import datetime
-from pathlib import Path
 
+from artemis.core.path_utils import get_user_logs_dir
 
-LOG_FILE = Path("logs/artemis.log")
+LOG_FILE = get_user_logs_dir() / "artemis.log"
 
 
 def log(message: str, level: str = "INFO") -> None:

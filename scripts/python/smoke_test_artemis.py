@@ -1,4 +1,5 @@
 import copy
+import os
 import sys
 import tempfile
 import types
@@ -8,6 +9,8 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
+TEST_APPDATA_DIR = tempfile.TemporaryDirectory(prefix="artemis_appdata_")
+os.environ["ARTEMIS_APPDATA_DIR"] = TEST_APPDATA_DIR.name
 
 
 def install_watchdog_import_stub_if_missing() -> None:
@@ -250,6 +253,7 @@ def main() -> int:
     finally:
         cleanup_tracker.CLEANUP_FILE = original_cleanup_file
         recent_activity.RECENT_ACTIVITY_FILE = original_recent_activity_file
+        TEST_APPDATA_DIR.cleanup()
 
 
 if __name__ == "__main__":

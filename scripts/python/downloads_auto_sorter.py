@@ -18,6 +18,11 @@ from artemis.core.rules_engine import (
     validate_user_rules_config,
 )
 from artemis.core.path_utils import resolve_config_path
+from artemis.core.path_utils import (
+    get_sorter_config_path,
+    get_user_logs_dir,
+    get_user_runtime_dir,
+)
 from artemis.core.recent_activity import record_recent_activity
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -27,11 +32,11 @@ ARTEMIS_DIR = ROOT_DIR / "artemis"
 
 from artemis.core.cleanup_tracker import add_cleanup_item
 
-CONFIG_PATH = ROOT_DIR / "config/downloads_sorter.json"
-LOG_FILE = ROOT_DIR / "logs/downloads_sorter.log"
-STATE_FILE = ROOT_DIR / "logs/downloads_sorter_state.json"
+CONFIG_PATH = get_sorter_config_path()
+LOG_FILE = get_user_logs_dir() / "downloads_sorter.log"
+STATE_FILE = get_user_logs_dir() / "downloads_sorter_state.json"
 
-RUNTIME_DIR = ROOT_DIR / "runtime"
+RUNTIME_DIR = get_user_runtime_dir()
 LOCK_FILE = RUNTIME_DIR / "artemis.lock"
 PID_FILE = RUNTIME_DIR / "artemis.pid"
 STOP_FILE = RUNTIME_DIR / "artemis.stop"

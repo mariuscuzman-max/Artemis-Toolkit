@@ -1,6 +1,4 @@
-﻿customtkinter
+PyQt6
 psutil
-pywin32
 watchdog
-Send2Trash
 pyinstaller

@@ -5,15 +5,22 @@ from pathlib import Path
 import psutil
 import json
 import time
-ROOT_DIR = Path(__file__).resolve().parents[2]
+from artemis.core.path_utils import get_resource_root, get_user_runtime_dir
 
-RUNTIME_DIR = ROOT_DIR / "runtime"
+ROOT_DIR = get_resource_root()
+RUNTIME_DIR = get_user_runtime_dir()
 LOCK_FILE = RUNTIME_DIR / "artemis.lock"
 PID_FILE = RUNTIME_DIR / "artemis.pid"
 STOP_FILE = RUNTIME_DIR / "artemis.stop"
 
-SORTER_SCRIPT = ROOT_DIR / "scripts/python/downloads_auto_sorter.py"
 ACTIVITY_FILE = RUNTIME_DIR / "artemis_activity.json"
+
+
+def get_sorter_launch_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--sorter"]
+
+    return [sys.executable, "-m", "scripts.python.downloads_auto_sorter"]
 
 def is_artemis_running() -> bool:
     if not PID_FILE.exists():
@@ -83,13 +90,13 @@ def start_artemis():
 
     try:
         subprocess.Popen(
-            [sys.executable, "-m", "scripts.python.downloads_auto_sorter"],
+            get_sorter_launch_command(),
             creationflags=creationflags | breakaway_flag,
             **popen_kwargs,
         )
     except OSError:
         subprocess.Popen(
-            [sys.executable, "-m", "scripts.python.downloads_auto_sorter"],
+            get_sorter_launch_command(),
             creationflags=creationflags,
             **popen_kwargs,
         )

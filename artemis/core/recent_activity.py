@@ -2,9 +2,9 @@ import json
 import time
 from pathlib import Path
 
+from artemis.core.path_utils import get_user_runtime_dir
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-RUNTIME_DIR = ROOT_DIR / "runtime"
+RUNTIME_DIR = get_user_runtime_dir()
 RECENT_ACTIVITY_FILE = RUNTIME_DIR / "recent_activity.json"
 
 
@@ -29,7 +29,7 @@ def load_recent_activity() -> dict:
 
 
 def save_recent_activity(data: dict) -> None:
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    RECENT_ACTIVITY_FILE.parent.mkdir(parents=True, exist_ok=True)
     RECENT_ACTIVITY_FILE.write_text(
         json.dumps(data, indent=2),
         encoding="utf-8",

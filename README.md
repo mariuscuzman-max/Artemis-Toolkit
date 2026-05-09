@@ -1,4 +1,4 @@
-﻿# Artemis Toolkit
+# Artemis Toolkit
 
 Artemis Toolkit is a local Windows tray utility that keeps your Downloads folder clean.
 
@@ -10,18 +10,21 @@ Artemis is designed to be quiet, safe, and local. It does not use cloud services
 
 ## Current status
 
-Early development / tester build.
+Tester build moving toward a packaged Windows release.
 
 The app currently supports:
 
 - automatic Downloads sorting
 - default extension-based sorting
-- custom user rules from config
+- custom rules from the tray UI
+- extension and filename-based AND rules
 - safe duplicate renaming
 - cleanup queue with manual delete/postpone actions
 - recent activity history
 - tray UI with sorter status
 - duplicate tray instance prevention
+- portable Windows Downloads paths
+- first-run user config/runtime/logs under `%LOCALAPPDATA%\Artemis Toolkit`
 
 ## Safety rule
 
@@ -33,9 +36,8 @@ Cleanup actions always require user confirmation.
 
 - Windows-only for now
 - no installer yet
-- custom rules are still being built
-- some settings are still config-based
-- UI is functional but not final
+- archive handling is conservative
+- UI is functional but still being polished
 
 ## How to run
 
@@ -45,4 +47,11 @@ Requires Python and dependencies from `requirements.txt`.
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-python artemis\ui\tray.py
+python artemis_app.py
+```
+
+The repository `config/downloads_sorter.json` is the default template. The live user config is created on first run at:
+
+```text
+%LOCALAPPDATA%\Artemis Toolkit\config\downloads_sorter.json
+```

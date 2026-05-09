@@ -10,12 +10,15 @@ if (-not (Test-Path -LiteralPath $python)) {
 $script = @'
 import copy
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
 
 repo_root = Path.cwd()
 sys.path.insert(0, str(repo_root))
+test_appdata_dir = tempfile.TemporaryDirectory(prefix="artemis_appdata_")
+os.environ["ARTEMIS_APPDATA_DIR"] = test_appdata_dir.name
 
 from artemis.core import cleanup_tracker, recent_activity
 from artemis.core.rules_engine import find_first_matching_user_rule
@@ -141,6 +144,7 @@ try:
 finally:
     cleanup_tracker.CLEANUP_FILE = original_cleanup_file
     recent_activity.RECENT_ACTIVITY_FILE = original_recent_activity_file
+    test_appdata_dir.cleanup()
 '@
 
 Push-Location $repoRoot

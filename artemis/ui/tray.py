@@ -51,11 +51,16 @@ from scripts.python.artemis_control import (
 )
 
 from artemis.core.recent_activity import get_recent_activity
-from artemis.core.path_utils import resolve_config_path
+from artemis.core.path_utils import (
+    get_resource_path,
+    get_sorter_config_path,
+    get_user_runtime_dir,
+    resolve_config_path,
+)
 
 
-CONFIG_PATH = ROOT_DIR / "config" / "downloads_sorter.json"
-RUNTIME_DIR = ROOT_DIR / "runtime"
+CONFIG_PATH = get_sorter_config_path()
+RUNTIME_DIR = get_user_runtime_dir()
 TRAY_PID_FILE = RUNTIME_DIR / "artemis_tray.pid"
 
 APP_VERSION = "v0.4.5"
@@ -1787,7 +1792,7 @@ class ArtemisTray:
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
 
-        icon_dir = ROOT_DIR / "icons"
+        icon_dir = get_resource_path("icons")
 
         self.icon_idle = QIcon(str(icon_dir / "idle.png"))
         self.icon_active = QIcon(str(icon_dir / "active.png"))
@@ -1911,10 +1916,14 @@ class ArtemisTray:
         sys.exit(self.app.exec())
 
 
-if __name__ == "__main__":
+def run_tray_app() -> None:
     if not acquire_tray_instance_lock():
         print("Artemis tray is already running.")
-        sys.exit(0)
+        return
 
     tray = ArtemisTray()
     tray.run()
+
+
+if __name__ == "__main__":
+    run_tray_app()
