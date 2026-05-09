@@ -1,6 +1,8 @@
 import time
 from pathlib import Path
 
+from artemis.core.path_utils import resolve_config_path
+
 
 DEFAULT_CLEANUP_MIN_AGE_SECONDS = 7 * 24 * 60 * 60  # 7 days
 DEFAULT_CLEANUP_MIN_TOTAL_SIZE_MB = 10
@@ -135,35 +137,14 @@ def normalize_extension(value: str) -> str:
     return value
 
 
-def normalize_user_rule(rule: dict) -> dict | None:
-    """
-    Converts one raw JSON rule into a predictable internal structure.
-
-    Invalid rules return None.
-    v0.4.0 is intentionally forgiving:
-    bad rules are ignored instead of crashing the sorter.
-    """
-    if not isinstance(rule, dict):
+def normalize_rule_condition(condition: dict) -> dict | None:
+    if not isinstance(condition, dict):
         return None
 
-    if not rule.get("enabled", True):
-        return None
-
-    match = rule.get("match", {})
-    action = rule.get("action", {})
-
-    if not isinstance(match, dict) or not isinstance(action, dict):
-        return None
-
-    match_type = match.get("type")
-    match_value = match.get("value", "")
-
-    action_type = action.get("type")
+    match_type = condition.get("type")
+    match_value = condition.get("value", "")
 
     if match_type not in SUPPORTED_RULE_MATCH_TYPES:
-        return None
-
-    if action_type not in SUPPORTED_RULE_ACTION_TYPES:
         return None
 
     if not isinstance(match_value, str):
@@ -178,6 +159,76 @@ def normalize_user_rule(rule: dict) -> dict | None:
         match_value = match_value.strip().lower()
         if not match_value:
             return None
+
+    return {
+        "type": match_type,
+        "value": match_value,
+    }
+
+
+def get_rule_conditions(rule: dict) -> list[dict]:
+    conditions = rule.get("conditions")
+
+    if isinstance(conditions, list):
+        normalized_conditions = []
+        seen_condition_keys = set()
+
+        for condition in conditions:
+            normalized_condition = normalize_rule_condition(condition)
+
+            if normalized_condition is None:
+                return []
+
+            condition_key = (
+                normalized_condition["type"],
+                normalized_condition["value"],
+            )
+
+            if condition_key in seen_condition_keys:
+                return []
+
+            seen_condition_keys.add(condition_key)
+            normalized_conditions.append(normalized_condition)
+
+        return normalized_conditions
+
+    match = rule.get("match", {})
+    normalized_match = normalize_rule_condition(match)
+
+    if normalized_match is None:
+        return []
+
+    return [normalized_match]
+
+
+def normalize_user_rule(rule: dict) -> dict | None:
+    """
+    Converts one raw JSON rule into a predictable internal structure.
+
+    Invalid rules return None.
+    v0.4.0 is intentionally forgiving:
+    bad rules are ignored instead of crashing the sorter.
+    """
+    if not isinstance(rule, dict):
+        return None
+
+    if not rule.get("enabled", True):
+        return None
+
+    action = rule.get("action", {})
+
+    if not isinstance(action, dict):
+        return None
+
+    action_type = action.get("type")
+
+    if action_type not in SUPPORTED_RULE_ACTION_TYPES:
+        return None
+
+    conditions = get_rule_conditions(rule)
+
+    if not conditions:
+        return None
 
     normalized_action = {
         "type": action_type,
@@ -194,10 +245,8 @@ def normalize_user_rule(rule: dict) -> dict | None:
     return {
         "id": rule.get("id", ""),
         "name": rule.get("name", "Unnamed rule"),
-        "match": {
-            "type": match_type,
-            "value": match_value,
-        },
+        "conditions": conditions,
+        "match": conditions[0],
         "action": normalized_action,
     }
 
@@ -258,35 +307,60 @@ def validate_user_rules_config(config: dict) -> list[str]:
         if rule_enabled is False:
             continue
 
-        match = rule.get("match", {})
         action = rule.get("action", {})
-
-        if not isinstance(match, dict):
-            warnings.append(f"{label} ignored: match must be an object.")
-            continue
 
         if not isinstance(action, dict):
             warnings.append(f"{label} ignored: action must be an object.")
             continue
 
-        match_type = match.get("type")
-        match_value = match.get("value", "")
+        raw_conditions = rule.get("conditions")
 
-        if match_type not in SUPPORTED_RULE_MATCH_TYPES:
-            warnings.append(
-                f"{label} ignored: unsupported match type '{match_type}'."
-            )
-            continue
+        if isinstance(raw_conditions, list):
+            if not raw_conditions:
+                warnings.append(f"{label} ignored: conditions must not be empty.")
+                continue
 
-        if not isinstance(match_value, str) or not match_value.strip():
-            warnings.append(f"{label} ignored: match value is empty.")
-            continue
+            seen_condition_keys = set()
 
-        if match_type == "extension":
-            normalized = normalize_extension(match_value)
+            for condition_index, condition in enumerate(raw_conditions):
+                condition_label = f"{label}.conditions[{condition_index}]"
 
-            if not normalized:
-                warnings.append(f"{label} ignored: extension is empty.")
+                if not isinstance(condition, dict):
+                    warnings.append(f"{condition_label} ignored: condition must be an object.")
+                    continue
+
+                normalized_condition = normalize_rule_condition(condition)
+
+                if normalized_condition is None:
+                    warnings.append(f"{condition_label} ignored: invalid condition.")
+                    continue
+
+                condition_key = (
+                    normalized_condition["type"],
+                    normalized_condition["value"],
+                )
+
+                if condition_key in seen_condition_keys:
+                    warnings.append(f"{condition_label} ignored: duplicate condition.")
+                    continue
+
+                seen_condition_keys.add(condition_key)
+
+            if not get_rule_conditions(rule):
+                warnings.append(f"{label} ignored: no valid conditions found.")
+                continue
+
+        else:
+            match = rule.get("match", {})
+
+            if not isinstance(match, dict):
+                warnings.append(f"{label} ignored: match must be an object.")
+                continue
+
+            normalized_match = normalize_rule_condition(match)
+
+            if normalized_match is None:
+                warnings.append(f"{label} ignored: invalid match.")
                 continue
 
         action_type = action.get("type")
@@ -313,7 +387,7 @@ def validate_user_rules_config(config: dict) -> list[str]:
                 )
                 continue
 
-            destination_path = Path(destination).expanduser()
+            destination_path = resolve_config_path(destination)
 
             if not destination_path.exists() or not destination_path.is_dir():
                 warnings.append(
@@ -355,9 +429,17 @@ def rule_matches_file(rule: dict, file_path: Path) -> bool:
     This only answers yes/no.
     It does not move, skip, or modify anything.
     """
-    match = rule.get("match", {})
-    match_type = match.get("type")
-    match_value = match.get("value")
+    conditions = get_rule_conditions(rule)
+
+    if not conditions:
+        return False
+
+    return all(rule_condition_matches_file(condition, file_path) for condition in conditions)
+
+
+def rule_condition_matches_file(condition: dict, file_path: Path) -> bool:
+    match_type = condition.get("type")
+    match_value = condition.get("value")
 
     if match_type == "extension":
         return file_path.suffix.lower() == match_value

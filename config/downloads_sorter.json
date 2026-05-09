@@ -1,6 +1,6 @@
 {
-  "watch_folder": "C:\\Users\\mariu\\Downloads",
-  "destination_root": "C:\\Users\\mariu\\Downloads\\Sorted",
+  "watch_folder": "{downloads}",
+  "destination_root": "{downloads}\\Sorted",
   "skip_memory_days": 7,
   "processed_memory_days": 30,
   "ignored_exact_names": [

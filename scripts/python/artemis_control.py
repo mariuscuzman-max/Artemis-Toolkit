@@ -66,11 +66,33 @@ def start_artemis():
     if STOP_FILE.exists():
         STOP_FILE.unlink()
 
-    subprocess.Popen(
-        [sys.executable, "-m", "scripts.python.downloads_auto_sorter"],
-        cwd=str(ROOT_DIR),
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+    creationflags = (
+        subprocess.CREATE_NEW_PROCESS_GROUP
+        | subprocess.DETACHED_PROCESS
     )
+
+    breakaway_flag = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+
+    popen_kwargs = {
+        "cwd": str(ROOT_DIR),
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "scripts.python.downloads_auto_sorter"],
+            creationflags=creationflags | breakaway_flag,
+            **popen_kwargs,
+        )
+    except OSError:
+        subprocess.Popen(
+            [sys.executable, "-m", "scripts.python.downloads_auto_sorter"],
+            creationflags=creationflags,
+            **popen_kwargs,
+        )
 
     print("Artemis started.")
 

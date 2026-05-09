@@ -1,6 +1,5 @@
-from pathlib import Path
-
 from core.logger import log
+from core.path_utils import resolve_config_path
 
 
 def validate_entry(entry: dict, config: dict) -> bool:
@@ -23,7 +22,7 @@ def validate_entry(entry: dict, config: dict) -> bool:
             log(f"Entry '{entry_name}' is missing 'path'.", level="ERROR")
             return False
 
-        if not Path(path).exists():
+        if not resolve_config_path(path).exists():
             log(f"Entry '{entry_name}' points to missing Python script: {path}", level="ERROR")
             return False
 
@@ -35,7 +34,7 @@ def validate_entry(entry: dict, config: dict) -> bool:
             log(f"Entry '{entry_name}' is missing 'path'.", level="ERROR")
             return False
 
-        if not Path(path).exists():
+        if not resolve_config_path(path).exists():
             log(f"Entry '{entry_name}' points to missing AHK script: {path}", level="ERROR")
             return False
 
@@ -43,7 +42,7 @@ def validate_entry(entry: dict, config: dict) -> bool:
             log(f"Entry '{entry_name}' cannot run because 'settings.ahk_path' is missing.", level="ERROR")
             return False
 
-        if not Path(ahk_path).exists():
+        if not resolve_config_path(ahk_path).exists():
             log(f"Entry '{entry_name}' has invalid AHK executable path: {ahk_path}", level="ERROR")
             return False
 
@@ -59,7 +58,7 @@ def validate_entry(entry: dict, config: dict) -> bool:
             log(f"Entry '{entry_name}' is missing 'path'.", level="ERROR")
             return False
 
-        if not Path(path).exists():
+        if not resolve_config_path(path).exists():
             log(f"Entry '{entry_name}' points to missing folder: {path}", level="ERROR")
             return False
 
@@ -68,7 +67,7 @@ def validate_entry(entry: dict, config: dict) -> bool:
         return False
 
     cwd = entry.get("cwd")
-    if cwd and not Path(cwd).exists():
+    if cwd and not resolve_config_path(cwd).exists():
         log(f"Entry '{entry_name}' has invalid cwd: {cwd}", level="ERROR")
         return False
 

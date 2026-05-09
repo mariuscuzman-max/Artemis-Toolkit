@@ -23,7 +23,7 @@
         "delay_after": 0,
         "type": "python",
         "path": "scripts/python/test_script.py",
-        "cwd": "C:\\Users\\mariu\\Desktop\\Artemis-Toolkit"
+        "cwd": "{repo}"
       },
       {
         "name": "Open YouTube",
@@ -39,7 +39,7 @@
         "enabled": true,
         "delay_after": 0,
         "type": "folder",
-        "path": "C:\\Users\\mariu\\Desktop"
+        "path": "{desktop}"
       }
     ],
     "gaming": [
@@ -60,7 +60,7 @@
         "delay_after": 0,
         "type": "python",
         "path": "scripts/python/downloads_auto_sorter.py",
-        "cwd": "C:\\Users\\mariu\\Desktop\\Artemis-Toolkit"
+        "cwd": "{repo}"
       }
     ]
   }

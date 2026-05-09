@@ -17,6 +17,7 @@ from artemis.core.rules_engine import (
     find_first_matching_user_rule,
     validate_user_rules_config,
 )
+from artemis.core.path_utils import resolve_config_path
 from artemis.core.recent_activity import record_recent_activity
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -311,7 +312,7 @@ def extract_zip_in_place(file_path: Path) -> bool:
 
 
 def move_archive_to_sorted_archives(file_path: Path, config: dict) -> bool:
-    destination_root = Path(config["destination_root"])
+    destination_root = resolve_config_path(config["destination_root"])
     archive_dir = destination_root / "Arhive"
     archive_dir.mkdir(parents=True, exist_ok=True)
 
@@ -446,7 +447,7 @@ def apply_user_rule(file_path: Path, config: dict) -> bool | None:
 
     if action_type == "move_to":
         destination = action.get("destination", "")
-        destination_dir = Path(destination).expanduser()
+        destination_dir = resolve_config_path(destination)
 
         if not destination_dir.exists() or not destination_dir.is_dir():
             log(
@@ -585,7 +586,7 @@ def move_file_to_category(
         unknown_category=config["unknown_category"],
     )
 
-    destination_root = Path(config["destination_root"])
+    destination_root = resolve_config_path(config["destination_root"])
     destination_dir = destination_root / category
     destination_dir.mkdir(parents=True, exist_ok=True)
 
@@ -764,7 +765,7 @@ def main():
         if state_changed:
             save_state(state)
 
-        watch_folder = Path(config["watch_folder"])
+        watch_folder = resolve_config_path(config["watch_folder"])
         if not watch_folder.exists():
             raise FileNotFoundError(f"Watch folder does not exist: {watch_folder}")
 

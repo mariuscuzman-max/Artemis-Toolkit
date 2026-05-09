@@ -51,6 +51,7 @@ from scripts.python.artemis_control import (
 )
 
 from artemis.core.recent_activity import get_recent_activity
+from artemis.core.path_utils import resolve_config_path
 
 
 CONFIG_PATH = ROOT_DIR / "config" / "downloads_sorter.json"
@@ -190,6 +191,7 @@ class ArtemisMainWindow(QMainWindow):
 
         self.current_cleanup_candidates = []
         self.stop_requested = False
+        self.settings_dirty = False
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #202020;
@@ -882,7 +884,7 @@ QMainWindow {
         info_label = QLabel("Create your own sorting rules")
         info_label.setStyleSheet("font-size: 17px; font-weight: 600;")
 
-        info_hint = QLabel("Choose what goes where by creating simple rules for specific file types.")
+        info_hint = QLabel("Choose what goes where by creating simple filename and extension rules.")
         info_hint.setObjectName("MutedLabel")
 
         info_layout.addWidget(info_label)
@@ -892,21 +894,24 @@ QMainWindow {
 
         add_rule_card, add_rule_layout = self.make_card()
 
-        add_rule_title = QLabel("Add extension rule")
+        add_rule_title = QLabel("Add rule")
         add_rule_title.setStyleSheet("font-size: 17px; font-weight: 600;")
 
-        add_rule_hint = QLabel("Choose one extension and one action. To change a rule, delete it and add a new one.")
+        add_rule_hint = QLabel("Combine an extension with optional filename text, then choose an action.")
         add_rule_hint.setObjectName("MutedLabel")
 
         self.rule_extension_input = QLineEdit()
         self.rule_extension_input.setPlaceholderText(".pdf")
+
+        self.rule_name_contains_input = QLineEdit()
+        self.rule_name_contains_input.setPlaceholderText("apples")
 
         self.rule_action_combo = QComboBox()
         self.rule_action_combo.addItems(["move_to", "skip"])
         self.rule_action_combo.currentTextChanged.connect(self.on_rule_action_changed)
 
         self.rule_destination_input = QLineEdit()
-        self.rule_destination_input.setPlaceholderText("Destination folder for move_to")
+        self.rule_destination_input.setPlaceholderText("Destination folder")
 
         browse_destination_button = QPushButton("Browse")
         browse_destination_button.clicked.connect(self.browse_rule_destination)
@@ -921,6 +926,8 @@ QMainWindow {
         rule_row_1 = QHBoxLayout()
         rule_row_1.addWidget(QLabel("Extension"))
         rule_row_1.addWidget(self.rule_extension_input)
+        rule_row_1.addWidget(QLabel("Name contains"))
+        rule_row_1.addWidget(self.rule_name_contains_input)
         rule_row_1.addWidget(QLabel("Action"))
         rule_row_1.addWidget(self.rule_action_combo)
         rule_row_1.addStretch()
@@ -1008,6 +1015,56 @@ QMainWindow {
 
         return extension
 
+    def normalize_rule_name_contains_input(self, value: str) -> str:
+        return value.strip().lower()
+
+    def get_rule_conditions_for_display(self, rule: dict) -> list[dict]:
+        conditions = rule.get("conditions", [])
+
+        if isinstance(conditions, list) and conditions:
+            return [
+                condition
+                for condition in conditions
+                if isinstance(condition, dict)
+            ]
+
+        match = rule.get("match", {})
+
+        if isinstance(match, dict):
+            return [match]
+
+        return []
+
+    def format_rule_conditions(self, rule: dict) -> str:
+        parts = []
+
+        for condition in self.get_rule_conditions_for_display(rule):
+            condition_type = condition.get("type", "")
+            condition_value = condition.get("value", "")
+
+            if condition_type == "extension":
+                parts.append(f"extension is {condition_value}")
+            elif condition_type == "name_contains":
+                parts.append(f"name contains {condition_value}")
+            else:
+                parts.append(f"{condition_type}: {condition_value}")
+
+        return " AND ".join(parts) if parts else "Invalid rule"
+
+    def get_rule_condition_key(self, rule: dict) -> tuple[tuple[str, str], ...]:
+        key_parts = []
+
+        for condition in self.get_rule_conditions_for_display(rule):
+            condition_type = str(condition.get("type", ""))
+            condition_value = str(condition.get("value", "")).strip().lower()
+
+            if condition_type == "extension":
+                condition_value = self.normalize_rule_extension_input(condition_value)
+
+            key_parts.append((condition_type, condition_value))
+
+        return tuple(key_parts)
+
     def on_rule_action_changed(self):
         action = self.rule_action_combo.currentText()
 
@@ -1032,6 +1089,9 @@ QMainWindow {
         extension = self.normalize_rule_extension_input(
             self.rule_extension_input.text()
         )
+        name_contains = self.normalize_rule_name_contains_input(
+            self.rule_name_contains_input.text()
+        )
 
         if not extension:
             QMessageBox.warning(
@@ -1040,6 +1100,19 @@ QMainWindow {
                 "Enter a valid extension, for example .pdf or jpg.",
             )
             return
+
+        conditions = [
+            {
+                "type": "extension",
+                "value": extension,
+            }
+        ]
+
+        if name_contains:
+            conditions.append({
+                "type": "name_contains",
+                "value": name_contains,
+            })
 
         action_type = self.rule_action_combo.currentText()
 
@@ -1058,7 +1131,7 @@ QMainWindow {
                 )
                 return
 
-            destination_path = Path(destination).expanduser()
+            destination_path = resolve_config_path(destination)
 
             if not destination_path.exists() or not destination_path.is_dir():
                 QMessageBox.warning(
@@ -1080,30 +1153,26 @@ QMainWindow {
 
         if not isinstance(rules, list):
             rules = []
+        new_rule_condition_key = tuple(
+            (condition["type"], condition["value"])
+            for condition in conditions
+        )
+
         for rule in rules:
             if not isinstance(rule, dict):
                 continue
 
-            match = rule.get("match", {})
-
-            if not isinstance(match, dict):
-                continue
-
-            existing_match_type = match.get("type", "")
-            existing_match_value = self.normalize_rule_extension_input(
-                str(match.get("value", ""))
-            )
-
-            if existing_match_type == "extension" and existing_match_value == extension:
+            if self.get_rule_condition_key(rule) == new_rule_condition_key:
                 QMessageBox.warning(
                     self,
                     "Artemis Rules",
                     (
-                        f"A rule for {extension} already exists.\n\n"
+                        "A rule with the same conditions already exists.\n\n"
                         "Delete or disable the existing rule before adding another one."
                     ),
                 )
                 return
+
         rule_id = f"user_rule_{extension.replace('.', '')}_{int(time.time())}"
 
         if action_type == "skip":
@@ -1111,10 +1180,14 @@ QMainWindow {
         else:
             rule_name = f"Move {extension} files"
 
+        if name_contains:
+            rule_name = f"{rule_name} containing {name_contains}"
+
         rules.append({
             "id": rule_id,
             "name": rule_name,
             "enabled": True,
+            "conditions": conditions,
             "match": {
                 "type": "extension",
                 "value": extension,
@@ -1137,6 +1210,7 @@ QMainWindow {
             return
 
         self.rule_extension_input.clear()
+        self.rule_name_contains_input.clear()
         self.rule_destination_input.clear()
 
         self.refresh_rules_table()
@@ -1338,11 +1412,8 @@ QMainWindow {
             enabled = rule.get("enabled", True)
             name = rule.get("name", "Unnamed rule")
 
-            match = rule.get("match", {})
             action = rule.get("action", {})
 
-            match_type = match.get("type", "")
-            match_value = match.get("value", "")
             action_type = action.get("type", "")
             destination = action.get("destination", "")
 
@@ -1353,7 +1424,7 @@ QMainWindow {
 
             self.rules_table.setItem(visible_row, 0, enabled_item)
             self.rules_table.setItem(visible_row, 1, QTableWidgetItem(str(name)))
-            self.rules_table.setItem(visible_row, 2, QTableWidgetItem(f"{match_type}: {match_value}"))
+            self.rules_table.setItem(visible_row, 2, QTableWidgetItem(self.format_rule_conditions(rule)))
             self.rules_table.setItem(visible_row, 3, QTableWidgetItem(str(action_type)))
             self.rules_table.setItem(visible_row, 4, QTableWidgetItem(str(destination)))
 
@@ -1704,7 +1775,7 @@ QMainWindow {
             QMessageBox.warning(self, "Artemis", "No destination_root found in config.")
             return
 
-        open_path_in_explorer(Path(destination_root))
+        open_path_in_explorer(resolve_config_path(destination_root))
 
     def closeEvent(self, event):
         event.ignore()

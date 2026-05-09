@@ -41,6 +41,7 @@ def install_watchdog_import_stub_if_missing() -> None:
 install_watchdog_import_stub_if_missing()
 
 from artemis.core import cleanup_tracker, recent_activity
+from artemis.core.rules_engine import find_first_matching_user_rule
 from scripts.python.downloads_auto_sorter import (
     CONFIG_PATH,
     get_category_for_extension,
@@ -80,11 +81,13 @@ def create_sample_files(fake_downloads: Path) -> dict[str, Path]:
         "exe": fake_downloads / "test.exe",
         "txt": fake_downloads / "test.txt",
         "zip": fake_downloads / "test.zip",
+        "sameday_pdf": fake_downloads / "invoice_sameday.pdf",
     }
 
     samples["pdf"].write_text("fake pdf content", encoding="utf-8")
     samples["exe"].write_text("fake exe content", encoding="utf-8")
     samples["txt"].write_text("fake text content", encoding="utf-8")
+    samples["sameday_pdf"].write_text("fake sameday pdf content", encoding="utf-8")
 
     with zipfile.ZipFile(samples["zip"], "w") as zip_file:
         zip_file.writestr("inside.txt", "hello from zip")
@@ -127,6 +130,7 @@ def main() -> int:
             require(samples["exe"].exists(), "Create sample EXE")
             require(samples["txt"].exists(), "Create sample TXT")
             require(samples["zip"].exists(), "Create sample ZIP")
+            require(samples["sameday_pdf"].exists(), "Create sample name-match PDF")
 
             require(
                 get_category_for_extension(".pdf", config["categories"], config["unknown_category"]) == "Documente",
@@ -138,6 +142,55 @@ def main() -> int:
             skipped_archives: set[str] = set()
             processed_archives: set[str] = set()
             state = {"skipped_archives": [], "processed_archives": []}
+
+            sameday_destination = sorted_root / "Sameday"
+            sameday_destination.mkdir(parents=True, exist_ok=True)
+            config["user_rules"] = {
+                "enabled": True,
+                "rules": [
+                    {
+                        "id": "smoke_sameday_pdf",
+                        "name": "Move Sameday PDFs",
+                        "enabled": True,
+                        "conditions": [
+                            {
+                                "type": "extension",
+                                "value": ".pdf",
+                            },
+                            {
+                                "type": "name_contains",
+                                "value": "sameday",
+                            },
+                        ],
+                        "action": {
+                            "type": "move_to",
+                            "destination": str(sameday_destination),
+                        },
+                    }
+                ],
+            }
+
+            require(
+                find_first_matching_user_rule(samples["sameday_pdf"], config) is not None,
+                "Match multi-condition AND user rule",
+            )
+            require(
+                find_first_matching_user_rule(samples["pdf"], config) is None,
+                "Do not match AND rule when filename text is missing",
+            )
+
+            moved = move_file_to_category(
+                samples["sameday_pdf"],
+                config,
+                skipped_archives,
+                processed_archives,
+                state,
+            )
+            require(moved is True, "Move PDF by multi-condition user rule")
+            require(
+                (sameday_destination / "invoice_sameday.pdf").exists(),
+                "Verify multi-condition rule destination",
+            )
 
             for key in ["pdf", "exe", "txt"]:
                 moved = move_file_to_category(
