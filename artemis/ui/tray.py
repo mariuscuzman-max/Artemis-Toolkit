@@ -1,4 +1,5 @@
 ﻿import atexit
+import ctypes
 import json
 import os
 from re import match
@@ -65,10 +66,26 @@ from artemis.core.path_utils import (
 CONFIG_PATH = get_sorter_config_path()
 RUNTIME_DIR = get_user_runtime_dir()
 TRAY_PID_FILE = RUNTIME_DIR / "artemis_tray.pid"
+OPEN_WINDOW_REQUEST_FILE = RUNTIME_DIR / "open_window.request"
 
-APP_VERSION = "v0.5.4"
+APP_VERSION = "v0.6.1"
 DEVELOPER_NAME = "Marius Cuzman"
 ARTEMIS_ACCENT = "#64d6d2"
+ARTEMIS_APP_ID = "MariusCuzman.ArtemisToolkit"
+
+
+def get_app_icon() -> QIcon:
+    return QIcon(str(get_resource_path("icons", "app.ico")))
+
+
+def set_windows_app_id() -> None:
+    if sys.platform != "win32":
+        return
+
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(ARTEMIS_APP_ID)
+    except Exception:
+        pass
 
 
 def load_sorter_config() -> dict:
@@ -89,6 +106,29 @@ def save_sorter_config(config: dict) -> tuple[bool, str]:
         return True, ""
     except Exception as error:
         return False, str(error)
+
+
+def apply_installer_first_run_reset(config: dict) -> dict:
+    marker_path = get_resource_path("first_run_reset.marker")
+
+    if not marker_path.exists():
+        return config
+
+    try:
+        marker = marker_path.read_text(encoding="utf-8-sig").strip()
+    except Exception:
+        return config
+
+    if not marker:
+        return config
+
+    if config.get("_installer_reset_marker") == marker:
+        return config
+
+    config["_installer_reset_marker"] = marker
+    config["first_run_completed"] = False
+    save_sorter_config(config)
+    return config
 
 
 def make_config_path_display(value: str) -> str:
@@ -195,6 +235,82 @@ def acquire_tray_instance_lock() -> bool:
     return True
 
 
+def request_existing_tray_window() -> None:
+    try:
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        OPEN_WINDOW_REQUEST_FILE.write_text(str(time.time()), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def is_artemis_related_process(process: psutil.Process, include_tray: bool = False) -> bool:
+    try:
+        process_exe = Path(process.exe()).resolve()
+        current_exe = Path(sys.executable).resolve()
+        cmdline = " ".join(process.cmdline()).lower()
+
+        if getattr(sys, "frozen", False):
+            if process_exe != current_exe:
+                return False
+
+            if "--sorter" in cmdline:
+                return True
+
+            return include_tray
+
+        sorter_process = (
+            "downloads_auto_sorter.py" in cmdline
+            or "scripts.python.downloads_auto_sorter" in cmdline
+        )
+        tray_process = (
+            "tray.py" in cmdline
+            or "artemis.ui.tray" in cmdline
+            or "artemis_app.py" in cmdline
+        )
+
+        return sorter_process or (include_tray and tray_process)
+
+    except Exception:
+        return False
+
+
+def force_stop_artemis_processes(include_tray: bool = False) -> None:
+    current_pid = os.getpid()
+    targets = []
+
+    for process in psutil.process_iter(["pid"]):
+        if process.pid == current_pid:
+            continue
+
+        if is_artemis_related_process(process, include_tray=include_tray):
+            targets.append(process)
+
+    for process in targets:
+        try:
+            process.terminate()
+        except Exception:
+            pass
+
+    _, alive = psutil.wait_procs(targets, timeout=2)
+
+    for process in alive:
+        try:
+            process.kill()
+        except Exception:
+            pass
+
+
+def cleanup_sorter_runtime_files() -> None:
+    for filename in ("artemis.lock", "artemis.pid", "artemis.stop"):
+        file_path = RUNTIME_DIR / filename
+
+        try:
+            if file_path.exists():
+                file_path.unlink()
+        except Exception:
+            pass
+
+
 class FirstRunSetupDialog(QDialog):
     DESTINATION_SORTED = "sorted"
     DESTINATION_DIRECT = "direct"
@@ -204,6 +320,7 @@ class FirstRunSetupDialog(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle("Artemis Setup")
+        self.setWindowIcon(get_app_icon())
         self.setMinimumSize(720, 500)
         self.setModal(True)
 
@@ -586,6 +703,7 @@ class ArtemisMainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Artemis Toolkit")
+        self.setWindowIcon(get_app_icon())
         self.setMinimumSize(940, 580)
 
         self.current_cleanup_candidates = []
@@ -1931,6 +2049,23 @@ QMainWindow {
 
         settings_layout.addLayout(save_row)
 
+        wizard_hint = QLabel(
+            "Run the setup wizard again to review Artemis safety rules and choose sorting folders."
+        )
+        wizard_hint.setObjectName("MutedLabel")
+        wizard_hint.setWordWrap(True)
+
+        self.run_setup_wizard_button = QPushButton("Run setup wizard")
+        self.run_setup_wizard_button.setFixedWidth(180)
+        self.run_setup_wizard_button.clicked.connect(self.run_setup_wizard_from_settings)
+
+        wizard_row = QHBoxLayout()
+        wizard_row.addWidget(self.run_setup_wizard_button)
+        wizard_row.addStretch()
+
+        settings_layout.addWidget(wizard_hint)
+        settings_layout.addLayout(wizard_row)
+
         layout.addWidget(settings_card)
 
         open_sorted_button = QPushButton("Open Sorted Folder")
@@ -2049,6 +2184,35 @@ QMainWindow {
         )
 
         self.refresh_settings_preview()
+
+    def run_setup_wizard_from_settings(self):
+        if self.settings_dirty:
+            result = QMessageBox.question(
+                self,
+                "Run setup wizard",
+                "You have unsaved settings. Run the setup wizard anyway?",
+            )
+
+            if result != QMessageBox.StandardButton.Yes:
+                return
+
+        dialog = FirstRunSetupDialog(self)
+        result = dialog.exec()
+
+        if result != QDialog.DialogCode.Accepted:
+            return
+
+        start_artemis()
+        self.settings_dirty = False
+        self.refresh_dynamic_data()
+        self.refresh_settings_preview()
+
+        QMessageBox.information(
+            self,
+            "Artemis Setup",
+            "Setup choices saved.",
+        )
+
     def refresh_settings_preview(self):
         if self.settings_dirty:
             return
@@ -2201,7 +2365,11 @@ QMainWindow {
 
 class ArtemisTray:
     def __init__(self):
+        set_windows_app_id()
         self.app = QApplication(sys.argv)
+        self.app.setApplicationName("Artemis Toolkit")
+        self.app.setApplicationDisplayName("Artemis Toolkit")
+        self.app.setWindowIcon(get_app_icon())
         self.app.setQuitOnLastWindowClosed(False)
 
         icon_dir = get_resource_path("icons")
@@ -2259,8 +2427,8 @@ class ArtemisTray:
 
         menu.addSeparator()
 
-        exit_action = menu.addAction("Exit Artemis UI")
-        exit_action.triggered.connect(self.app.quit)
+        exit_action = menu.addAction("Quit Artemis")
+        exit_action.triggered.connect(self.quit_artemis)
 
         self.tray.setContextMenu(menu)
 
@@ -2272,20 +2440,42 @@ class ArtemisTray:
         self.window.raise_()
         self.window.activateWindow()
 
+    def quit_artemis(self):
+        self.timer.stop()
+        self.tray.setVisible(False)
+
+        stop_artemis()
+
+        deadline = time.time() + 3
+        while time.time() < deadline and is_artemis_running():
+            self.app.processEvents()
+            time.sleep(0.1)
+
+        force_stop_artemis_processes(include_tray=True)
+        cleanup_sorter_runtime_files()
+        release_tray_instance_lock()
+        self.app.quit()
+
     def show_first_run_setup_if_needed(self):
         config = load_sorter_config()
+        config = apply_installer_first_run_reset(config)
 
         if config.get("first_run_completed") is True:
+            start_artemis()
+            self.window.refresh_dynamic_data()
             return
 
         dialog = FirstRunSetupDialog(self.window)
         result = dialog.exec()
 
         if result == QDialog.DialogCode.Accepted:
+            start_artemis()
             self.window.refresh_dynamic_data()
             self.open_window(ArtemisMainWindow.TAB_PROCESSES)
 
     def update_status(self):
+        self.handle_open_window_request()
+
         running = is_artemis_running()
         activity = get_artemis_activity()
         state = activity.get("state", "idle")
@@ -2331,6 +2521,17 @@ class ArtemisTray:
         self.tray.setIcon(self.icon_idle)
         self.tray.setToolTip(f"Artemis - Idle{cleanup_text}")
 
+    def handle_open_window_request(self):
+        if not OPEN_WINDOW_REQUEST_FILE.exists():
+            return
+
+        try:
+            OPEN_WINDOW_REQUEST_FILE.unlink()
+        except Exception:
+            pass
+
+        self.open_window(ArtemisMainWindow.TAB_PROCESSES)
+
     def on_tray_click(self, reason):
         if reason in (
             QSystemTrayIcon.ActivationReason.Trigger,
@@ -2344,6 +2545,7 @@ class ArtemisTray:
 
 def run_tray_app() -> None:
     if not acquire_tray_instance_lock():
+        request_existing_tray_window()
         print("Artemis tray is already running.")
         return
 

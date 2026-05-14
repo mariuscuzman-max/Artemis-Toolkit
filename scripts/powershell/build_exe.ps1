@@ -12,6 +12,7 @@ $distPath = Join-Path $repoRoot "dist"
 $buildPath = Join-Path $repoRoot "build"
 $specPath = Join-Path $repoRoot "ArtemisToolkit.spec"
 $iconPath = Join-Path $repoRoot "icons\app.ico"
+$versionFilePath = Join-Path $repoRoot "packaging\windows_version_info.txt"
 
 Write-Host "Artemis Toolkit EXE build"
 Write-Host "Repo: $repoRoot"
@@ -48,22 +49,14 @@ $args = @(
     $entryPoint
 )
 
+if (Test-Path -LiteralPath $versionFilePath) {
+    $entryIndex = $args.Count - 1
+    $args = $args[0..($entryIndex - 1)] + @("--version-file", $versionFilePath) + $args[$entryIndex]
+}
+
 if (Test-Path -LiteralPath $iconPath) {
-    $args = @(
-        "-m", "PyInstaller",
-        "--noconfirm",
-        "--clean",
-        "--onedir",
-        "--windowed",
-        "--name", "ArtemisToolkit",
-        "--icon", $iconPath,
-        "--distpath", $distPath,
-        "--workpath", $buildPath,
-        "--specpath", $repoRoot,
-        "--add-data", $addDataIcons,
-        "--add-data", $addDataConfig,
-        $entryPoint
-    )
+    $entryIndex = $args.Count - 1
+    $args = $args[0..($entryIndex - 1)] + @("--icon", $iconPath) + $args[$entryIndex]
 }
 
 Push-Location $repoRoot

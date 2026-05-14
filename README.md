@@ -35,9 +35,33 @@ Cleanup actions always require user confirmation.
 ## Current limitations
 
 - Windows-only for now
-- no installer yet
+- packaged EXE and installer exist for internal alpha testing
 - archive handling is conservative
 - UI is functional but still being polished
+- no cloud sync, accounts, or cross-device behavior
+- no content-based document scanning yet
+- custom rules support extension/name matching with AND logic, but not OR/nested groups
+
+## Packaged build
+
+The current PyInstaller onedir build is created at:
+
+```text
+dist\ArtemisToolkit\ArtemisToolkit.exe
+```
+
+This build uses:
+
+- app icon from `icons\app.ico`
+- Windows version metadata from `packaging\windows_version_info.txt`
+- bundled default config template from `config`
+- bundled tray/app icons from `icons`
+
+The Windows installer creates a Task Scheduler entry named `Artemis Toolkit` so Artemis starts when the user logs into Windows. When first-run setup is complete, the tray app starts the sorter automatically.
+
+The Settings page includes a `Run setup wizard` button so onboarding can be reviewed or repeated without resetting Downloads data.
+
+The tray menu `Quit Artemis` action shuts down both the tray UI and the background sorter.
 
 ## How to run
 
@@ -59,3 +83,44 @@ The repository `config/downloads_sorter.json` is the default template. The live 
 ## Tray icon visibility
 
 Windows may place Artemis in the hidden tray icons menu after launch. To keep Artemis visible, open the hidden icons arrow in the taskbar and drag the Artemis icon next to your network and volume icons. Windows controls this as a user preference, so Artemis does not force the icon into the visible tray area.
+
+## Reset behavior
+
+Artemis stores live user data here:
+
+```text
+%LOCALAPPDATA%\Artemis Toolkit
+```
+
+That folder may contain config, logs, runtime state, cleanup queue data, and recent activity history.
+
+To fully reset Artemis to a first-run state, close Artemis completely, then remove:
+
+```text
+%LOCALAPPDATA%\Artemis Toolkit
+```
+
+This does not delete files from Downloads or from any folders Artemis previously sorted files into.
+
+## Uninstall behavior
+
+The installer should remove installed application files only.
+
+The installer should also remove the `Artemis Toolkit` Task Scheduler startup entry.
+
+Each installer run writes a small reinstall marker into the app install folder. On next launch, Artemis compares that marker with the live user config and resets the setup wizard flag in:
+
+```text
+%LOCALAPPDATA%\Artemis Toolkit\config\downloads_sorter.json
+```
+
+This means a later reinstall shows the first-run wizard again while still preserving the rest of the user config unless the user changes it in setup.
+
+Uninstall must not silently delete:
+
+- the user's Downloads files
+- sorted destination folders
+- files previously moved by Artemis
+- `%LOCALAPPDATA%\Artemis Toolkit`
+
+A future installer may offer an optional checkbox to remove all Artemis settings/logs/state from `%LOCALAPPDATA%\Artemis Toolkit`, but that cleanup must be explicit and separate from removing the app itself.
