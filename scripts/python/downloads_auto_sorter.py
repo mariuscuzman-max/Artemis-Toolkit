@@ -6,10 +6,9 @@ import shutil
 import sys
 import threading
 import time
-import tkinter as tk
 import zipfile
+import ctypes
 from pathlib import Path
-from tkinter import messagebox
 from artemis.core.cleanup_tracker import clean_invalid_items
 
 
@@ -119,6 +118,47 @@ def load_config() -> dict:
 
     with CONFIG_PATH.open("r", encoding="utf-8-sig") as file:
         return json.load(file)
+
+
+def get_config_mtime() -> float:
+    try:
+        return CONFIG_PATH.stat().st_mtime
+    except Exception:
+        return 0.0
+
+
+def reload_config_if_changed(
+    config: dict,
+    last_config_mtime: float,
+    state: dict,
+) -> tuple[dict, float, set[str], set[str]]:
+    current_mtime = get_config_mtime()
+
+    if current_mtime == last_config_mtime:
+        skipped_archives, processed_archives, _ = prune_expired_state_entries(state, config)
+        return config, last_config_mtime, skipped_archives, processed_archives
+
+    try:
+        reloaded_config = load_config()
+
+        for warning in validate_user_rules_config(reloaded_config):
+            log(warning, level="WARNING")
+
+        skipped_archives, processed_archives, state_changed = prune_expired_state_entries(
+            state,
+            reloaded_config,
+        )
+
+        if state_changed:
+            save_state(state)
+
+        log("Sorter config reloaded.")
+        return reloaded_config, current_mtime, skipped_archives, processed_archives
+
+    except Exception as error:
+        log(f"Failed to reload sorter config: {error}", level="WARNING")
+        skipped_archives, processed_archives, _ = prune_expired_state_entries(state, config)
+        return config, last_config_mtime, skipped_archives, processed_archives
 
 
 def load_state() -> dict:
@@ -270,18 +310,25 @@ def is_valid_zip(file_path: Path) -> bool:
 
 
 def ask_extract_archive(file_path: Path) -> bool:
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
+    if os.name != "nt":
+        log(
+            f"Archive prompt is only supported on Windows. Skipping: {file_path.name}",
+            level="WARNING",
+        )
+        return False
 
-    result = messagebox.askyesno(
-        title="Artemis - Archive detected",
-        message=f"Arhivă detectată:\n{file_path.name}\n\nVrei să o dezarhivezi în Downloads?",
-        parent=root,
+    result = ctypes.windll.user32.MessageBoxW(
+        None,
+        (
+            "Archive detected:\n"
+            f"{file_path.name}\n\n"
+            "Do you want Artemis to extract it in your Downloads folder?"
+        ),
+        "Artemis - Archive detected",
+        0x00000004 | 0x00000020 | 0x00040000,
     )
 
-    root.destroy()
-    return result
+    return result == 6
 
 
 def get_unique_extract_folder(base_folder: Path) -> Path:
@@ -318,7 +365,7 @@ def extract_zip_in_place(file_path: Path) -> bool:
 
 def move_archive_to_sorted_archives(file_path: Path, config: dict) -> bool:
     destination_root = resolve_config_path(config["destination_root"])
-    archive_dir = destination_root / "Arhive"
+    archive_dir = destination_root / "Archives"
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     existing_path = archive_dir / file_path.name
@@ -760,6 +807,7 @@ def main():
 
     try:
         config = load_config()
+        last_config_mtime = get_config_mtime()
 
         for warning in validate_user_rules_config(config):
             log(warning, level="WARNING")
@@ -798,6 +846,12 @@ def main():
 
         while True:
             now = time.time()
+
+            config, last_config_mtime, skipped_archives, processed_archives = reload_config_if_changed(
+                config,
+                last_config_mtime,
+                state,
+            )
 
             if now - last_cleanup_run > CLEANUP_INTERVAL:
                 clean_invalid_items()

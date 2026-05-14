@@ -20,7 +20,15 @@ def get_sorter_launch_command() -> list[str]:
     if getattr(sys, "frozen", False):
         return [sys.executable, "--sorter"]
 
-    return [sys.executable, "-m", "scripts.python.downloads_auto_sorter"]
+    python_executable = Path(sys.executable)
+
+    if os.name == "nt":
+        pythonw_executable = python_executable.with_name("pythonw.exe")
+
+        if pythonw_executable.exists():
+            python_executable = pythonw_executable
+
+    return [str(python_executable), "-m", "scripts.python.downloads_auto_sorter"]
 
 def is_artemis_running() -> bool:
     if not PID_FILE.exists():
@@ -36,11 +44,18 @@ def is_artemis_running() -> bool:
 
     try:
         process = psutil.Process(pid)
+        process_exe = Path(process.exe()).resolve()
+        current_exe = Path(sys.executable).resolve()
         cmdline = " ".join(process.cmdline()).lower()
 
         return (
             "downloads_auto_sorter.py" in cmdline
             or "scripts.python.downloads_auto_sorter" in cmdline
+            or (
+                getattr(sys, "frozen", False)
+                and process_exe == current_exe
+                and "--sorter" in cmdline
+            )
         )
 
     except Exception:
@@ -63,19 +78,22 @@ def get_artemis_activity() -> dict:
             "timestamp": time.time(),
         }
 
-def start_artemis():
+def start_artemis(verbose: bool = False) -> bool:
     if is_artemis_running():
-        print("Artemis already running.")
-        return
+        if verbose:
+            print("Artemis already running.")
+        return False
 
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
     if STOP_FILE.exists():
         STOP_FILE.unlink()
 
+    no_window_flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     creationflags = (
         subprocess.CREATE_NEW_PROCESS_GROUP
         | subprocess.DETACHED_PROCESS
+        | no_window_flag
     )
 
     breakaway_flag = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
@@ -101,14 +119,21 @@ def start_artemis():
             **popen_kwargs,
         )
 
-    print("Artemis started.")
+    if verbose:
+        print("Artemis started.")
 
-def stop_artemis():
+    return True
+
+def stop_artemis(verbose: bool = False) -> bool:
     if not is_artemis_running():
-        print("Artemis not running.")
-        return
+        if verbose:
+            print("Artemis not running.")
+        return False
 
     STOP_FILE.parent.mkdir(parents=True, exist_ok=True)
     STOP_FILE.touch()
 
-    print("Stop signal sent.")
+    if verbose:
+        print("Stop signal sent.")
+
+    return True

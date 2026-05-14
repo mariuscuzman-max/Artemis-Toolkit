@@ -133,8 +133,8 @@ try:
         )
 
         require(
-            (sorted_root / "Documente" / "fresh_oranges_invoice.pdf").exists(),
-            "Non-matching PDF lands in the default Documente destination",
+            (sorted_root / "Documents" / "fresh_oranges_invoice.pdf").exists(),
+            "Non-matching PDF lands in the default Documents destination",
         )
 
         print("")

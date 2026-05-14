@@ -55,3 +55,7 @@ The repository `config/downloads_sorter.json` is the default template. The live 
 ```text
 %LOCALAPPDATA%\Artemis Toolkit\config\downloads_sorter.json
 ```
+
+## Tray icon visibility
+
+Windows may place Artemis in the hidden tray icons menu after launch. To keep Artemis visible, open the hidden icons arrow in the taskbar and drag the Artemis icon next to your network and volume icons. Windows controls this as a user preference, so Artemis does not force the icon into the visible tray area.

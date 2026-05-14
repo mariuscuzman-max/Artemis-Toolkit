@@ -11,6 +11,9 @@ logs/
 
 # Artemis specific
 *.lock
+build/
+dist/
+*.spec
 
 # Random copies
 * - Copy.py

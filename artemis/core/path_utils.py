@@ -9,6 +9,7 @@ APP_NAME = "Artemis Toolkit"
 
 
 DEFAULT_DOWNLOADS_SORTER_CONFIG = {
+    "first_run_completed": False,
     "watch_folder": "{downloads}",
     "destination_root": "{downloads}\\Sorted",
     "skip_memory_days": 7,
@@ -52,7 +53,7 @@ DEFAULT_DOWNLOADS_SORTER_CONFIG = {
     "stability_wait_seconds": 2,
     "min_file_age_seconds": 5,
     "categories": {
-        "Imagini": [
+        "Images": [
             ".png",
             ".jpg",
             ".jpeg",
@@ -63,7 +64,7 @@ DEFAULT_DOWNLOADS_SORTER_CONFIG = {
         "Torrents": [
             ".torrent",
         ],
-        "Documente": [
+        "Documents": [
             ".pdf",
             ".docx",
             ".doc",
@@ -89,13 +90,13 @@ DEFAULT_DOWNLOADS_SORTER_CONFIG = {
             ".exe",
             ".msi",
         ],
-        "Subtitrari": [
+        "Subtitles": [
             ".srt",
             ".sub",
         ],
-        "Altele": [],
+        "Other": [],
     },
-    "unknown_category": "Altele",
+    "unknown_category": "Other",
 }
 
 

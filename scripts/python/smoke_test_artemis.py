@@ -136,7 +136,7 @@ def main() -> int:
             require(samples["sameday_pdf"].exists(), "Create sample name-match PDF")
 
             require(
-                get_category_for_extension(".pdf", config["categories"], config["unknown_category"]) == "Documente",
+                get_category_for_extension(".pdf", config["categories"], config["unknown_category"]) == "Documents",
                 "Resolve PDF category",
             )
             require(is_archive(samples["zip"].name, config), "Detect ZIP as archive")
@@ -206,16 +206,16 @@ def main() -> int:
                 require(moved is True, f"Move {samples[key].name}")
 
             require(
-                (sorted_root / "Documente" / "test.pdf").exists(),
-                "Verify PDF moved to Sorted/Documente",
+                (sorted_root / "Documents" / "test.pdf").exists(),
+                "Verify PDF moved to Sorted/Documents",
             )
             require(
                 (sorted_root / "Installers" / "test.exe").exists(),
                 "Verify EXE moved to Sorted/Installers",
             )
             require(
-                (sorted_root / "Documente" / "test.txt").exists(),
-                "Verify TXT moved to Sorted/Documente",
+                (sorted_root / "Documents" / "test.txt").exists(),
+                "Verify TXT moved to Sorted/Documents",
             )
 
             missing_path = temp_root / "missing-file.tmp"
@@ -233,7 +233,7 @@ def main() -> int:
 
             recent_activity.record_recent_activity(
                 action="Smoke test event",
-                source_path=str(sorted_root / "Documente" / "test.pdf"),
+                source_path=str(sorted_root / "Documents" / "test.pdf"),
                 detail="backend smoke test",
             )
             activity_items = recent_activity.get_recent_activity(limit=1)

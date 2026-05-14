@@ -16,6 +16,8 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QAbstractItemView,
+    QButtonGroup,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -28,6 +30,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QRadioButton,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -63,7 +66,7 @@ CONFIG_PATH = get_sorter_config_path()
 RUNTIME_DIR = get_user_runtime_dir()
 TRAY_PID_FILE = RUNTIME_DIR / "artemis_tray.pid"
 
-APP_VERSION = "v0.4.5"
+APP_VERSION = "v0.5.4"
 DEVELOPER_NAME = "Marius Cuzman"
 ARTEMIS_ACCENT = "#64d6d2"
 
@@ -86,6 +89,10 @@ def save_sorter_config(config: dict) -> tuple[bool, str]:
         return True, ""
     except Exception as error:
         return False, str(error)
+
+
+def make_config_path_display(value: str) -> str:
+    return str(resolve_config_path(value))
 
 def format_size(size_bytes: int) -> str:
     try:
@@ -147,11 +154,17 @@ def is_existing_tray_running() -> bool:
 
     try:
         process = psutil.Process(existing_pid)
+        process_exe = Path(process.exe()).resolve()
+        current_exe = Path(sys.executable).resolve()
         cmdline = " ".join(process.cmdline()).lower()
+
+        if getattr(sys, "frozen", False):
+            return process_exe == current_exe and "--sorter" not in cmdline
 
         return (
             "tray.py" in cmdline
             or "artemis.ui.tray" in cmdline
+            or "artemis_app.py" in cmdline
         )
     except Exception:
         return False
@@ -180,6 +193,387 @@ def acquire_tray_instance_lock() -> bool:
     atexit.register(release_tray_instance_lock)
 
     return True
+
+
+class FirstRunSetupDialog(QDialog):
+    DESTINATION_SORTED = "sorted"
+    DESTINATION_DIRECT = "direct"
+    DESTINATION_CUSTOM = "custom"
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Artemis Setup")
+        self.setMinimumSize(720, 500)
+        self.setModal(True)
+
+        self.config = load_sorter_config()
+        self.destination_choice = self.DESTINATION_SORTED
+
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #202020;
+                color: #f2f2f2;
+            }
+
+            QLabel {
+                color: #f2f2f2;
+                background-color: transparent;
+                font-size: 14px;
+            }
+
+            QLabel#WizardTitle {
+                font-size: 24px;
+                font-weight: 700;
+            }
+
+            QLabel#WizardSubtitle {
+                color: #b0b0b0;
+                font-size: 14px;
+            }
+
+            QLabel#ExampleBox {
+                background-color: #262626;
+                border: 1px solid #3a3a3a;
+                border-radius: 8px;
+                padding: 12px;
+                font-family: Consolas;
+            }
+
+            QRadioButton, QCheckBox {
+                color: #f2f2f2;
+                font-size: 14px;
+                spacing: 8px;
+            }
+
+            QLineEdit {
+                background-color: #303030;
+                color: #f2f2f2;
+                border: 1px solid #444444;
+                border-radius: 8px;
+                padding: 7px 10px;
+            }
+
+            QLineEdit:disabled {
+                color: #888888;
+                background-color: #292929;
+            }
+
+            QPushButton {
+                background-color: #333333;
+                color: #f2f2f2;
+                border: 1px solid #444444;
+                border-radius: 8px;
+                padding: 8px 12px;
+            }
+
+            QPushButton:hover {
+                background-color: #3f3f3f;
+            }
+
+            QPushButton#PrimaryButton {
+                background-color: __ACCENT__;
+                color: #101010;
+                border: none;
+                font-weight: 700;
+            }
+        """.replace("__ACCENT__", ARTEMIS_ACCENT))
+
+        root_layout = QVBoxLayout()
+        root_layout.setContentsMargins(24, 22, 24, 18)
+        root_layout.setSpacing(14)
+        self.setLayout(root_layout)
+
+        self.pages = QStackedWidget()
+        root_layout.addWidget(self.pages, 1)
+
+        self.pages.addWidget(self.build_welcome_page())
+        self.pages.addWidget(self.build_destination_page())
+        self.pages.addWidget(self.build_existing_files_page())
+        self.pages.addWidget(self.build_review_page())
+
+        nav_layout = QHBoxLayout()
+        self.back_button = QPushButton("Back")
+        self.next_button = QPushButton("Next")
+        self.next_button.setObjectName("PrimaryButton")
+        self.cancel_button = QPushButton("Cancel")
+
+        self.back_button.clicked.connect(self.go_back)
+        self.next_button.clicked.connect(self.go_next)
+        self.cancel_button.clicked.connect(self.reject)
+
+        nav_layout.addWidget(self.cancel_button)
+        nav_layout.addStretch()
+        nav_layout.addWidget(self.back_button)
+        nav_layout.addWidget(self.next_button)
+        root_layout.addLayout(nav_layout)
+
+        self.update_navigation()
+
+    def build_page_shell(self, title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:
+        page = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(14)
+        page.setLayout(layout)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("WizardTitle")
+        layout.addWidget(title_label)
+
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("WizardSubtitle")
+        subtitle_label.setWordWrap(True)
+        layout.addWidget(subtitle_label)
+
+        return page, layout
+
+    def build_welcome_page(self) -> QWidget:
+        page, layout = self.build_page_shell(
+            "Set up Artemis",
+            "Artemis helps keep your Downloads folder organized by moving files into simple folders.",
+        )
+
+        details = QLabel(
+            "During setup, you'll choose where sorted files should be placed and whether Artemis should organize files that are already in your Downloads folder."
+        )
+        details.setWordWrap(True)
+        layout.addWidget(details)
+
+        safety = QLabel(
+            "Artemis never deletes files automatically. Cleanup suggestions always require your confirmation. Custom rules can move or skip files, but silent delete rules are not supported."
+        )
+        safety.setObjectName("WizardSubtitle")
+        safety.setWordWrap(True)
+        layout.addWidget(safety)
+
+        tray_tip = QLabel(
+            "Tip: Windows may place Artemis in the hidden tray icons menu. To keep it visible, open the hidden icons arrow and drag Artemis next to your network and volume icons."
+        )
+        tray_tip.setObjectName("WizardSubtitle")
+        tray_tip.setWordWrap(True)
+        layout.addWidget(tray_tip)
+        layout.addStretch()
+
+        return page
+
+    def build_destination_page(self) -> QWidget:
+        page, layout = self.build_page_shell(
+            "Choose a folder structure",
+            "Pick how you want Artemis to organize sorted files. You can change this later in Settings.",
+        )
+
+        self.destination_group = QButtonGroup(self)
+
+        self.sorted_radio = QRadioButton("Create a Sorted folder inside Downloads")
+        self.direct_radio = QRadioButton("Create category folders directly in Downloads")
+        self.custom_radio = QRadioButton("Use a custom destination folder")
+
+        self.destination_group.addButton(self.sorted_radio)
+        self.destination_group.addButton(self.direct_radio)
+        self.destination_group.addButton(self.custom_radio)
+
+        self.sorted_radio.setChecked(True)
+        self.sorted_radio.toggled.connect(self.update_destination_choice)
+        self.direct_radio.toggled.connect(self.update_destination_choice)
+        self.custom_radio.toggled.connect(self.update_destination_choice)
+
+        layout.addWidget(self.sorted_radio)
+        sorted_description = QLabel(
+            "Recommended for most users. Keeps your Downloads folder clean while storing sorted files in one place."
+        )
+        sorted_description.setObjectName("WizardSubtitle")
+        sorted_description.setWordWrap(True)
+        layout.addWidget(sorted_description)
+
+        sorted_example = QLabel("Downloads\\Sorted\\Images\nDownloads\\Sorted\\Documents\nDownloads\\Sorted\\Installers")
+        sorted_example.setObjectName("ExampleBox")
+        layout.addWidget(sorted_example)
+
+        layout.addWidget(self.direct_radio)
+        direct_description = QLabel(
+            "Sorted files will be placed into category folders directly inside your Downloads folder."
+        )
+        direct_description.setObjectName("WizardSubtitle")
+        direct_description.setWordWrap(True)
+        layout.addWidget(direct_description)
+
+        direct_example = QLabel("Downloads\\Images\nDownloads\\Documents\nDownloads\\Installers")
+        direct_example.setObjectName("ExampleBox")
+        layout.addWidget(direct_example)
+
+        custom_description = QLabel(
+            "Choose another folder where Artemis should place sorted files."
+        )
+        custom_description.setObjectName("WizardSubtitle")
+        custom_description.setWordWrap(True)
+        layout.addWidget(custom_description)
+
+        custom_row = QHBoxLayout()
+        self.custom_destination_input = QLineEdit()
+        self.custom_destination_input.setPlaceholderText("Select destination folder")
+        self.custom_destination_input.setEnabled(False)
+        self.custom_destination_input.textChanged.connect(self.update_navigation)
+
+        browse_button = QPushButton("Browse")
+        browse_button.clicked.connect(self.browse_custom_destination)
+
+        custom_row.addWidget(self.custom_radio)
+        custom_row.addWidget(self.custom_destination_input, 1)
+        custom_row.addWidget(browse_button)
+        layout.addLayout(custom_row)
+        layout.addStretch()
+
+        return page
+
+    def build_existing_files_page(self) -> QWidget:
+        page, layout = self.build_page_shell(
+            "Existing Downloads files",
+            "Choose whether Artemis should also organize files that are already in your Downloads folder.",
+        )
+
+        self.process_existing_checkbox = QCheckBox("Organize existing Downloads files when the sorter starts")
+        self.process_existing_checkbox.setChecked(
+            bool(self.config.get("process_existing_on_startup", True))
+        )
+        layout.addWidget(self.process_existing_checkbox)
+
+        note = QLabel(
+            "Leave this enabled to clean up files already sitting in Downloads. Turn it off if you only want Artemis to organize new files from now on."
+        )
+        note.setObjectName("WizardSubtitle")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        layout.addStretch()
+
+        return page
+
+    def build_review_page(self) -> QWidget:
+        page, layout = self.build_page_shell(
+            "Review setup",
+            "Artemis will save these choices locally on this PC.",
+        )
+
+        self.review_label = QLabel("")
+        self.review_label.setObjectName("ExampleBox")
+        self.review_label.setWordWrap(True)
+        layout.addWidget(self.review_label)
+        layout.addStretch()
+
+        return page
+
+    def selected_destination_value(self) -> str:
+        if self.direct_radio.isChecked():
+            return "{downloads}"
+
+        if self.custom_radio.isChecked():
+            return self.custom_destination_input.text().strip()
+
+        return "{downloads}\\Sorted"
+
+    def update_destination_choice(self):
+        is_custom = self.custom_radio.isChecked()
+        self.custom_destination_input.setEnabled(is_custom)
+        self.update_navigation()
+
+    def browse_custom_destination(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Choose destination folder",
+            str(Path.home()),
+        )
+
+        if folder:
+            self.custom_destination_input.setText(folder)
+            self.custom_radio.setChecked(True)
+
+    def update_review(self):
+        destination_value = self.selected_destination_value()
+        process_existing = "Yes" if self.process_existing_checkbox.isChecked() else "No"
+
+        self.review_label.setText(
+            "Watch folder:\n"
+            f"{make_config_path_display('{downloads}')}\n\n"
+            "Sorted files location:\n"
+            f"{make_config_path_display(destination_value)}\n\n"
+            "Organize existing Downloads files on startup:\n"
+            f"{process_existing}\n\n"
+            "Artemis will not delete files automatically."
+        )
+
+    def can_continue(self) -> bool:
+        if self.pages.currentIndex() != 1:
+            return True
+
+        if not self.custom_radio.isChecked():
+            return True
+
+        destination = self.custom_destination_input.text().strip()
+
+        if not destination:
+            return False
+
+        destination_path = resolve_config_path(destination)
+        return destination_path.exists() and destination_path.is_dir()
+
+    def update_navigation(self):
+        page_index = self.pages.currentIndex()
+        self.back_button.setVisible(page_index > 0)
+        self.back_button.setEnabled(page_index > 0)
+        self.next_button.setEnabled(self.can_continue())
+        self.next_button.setText("Finish" if page_index == self.pages.count() - 1 else "Next")
+
+        if page_index == self.pages.count() - 1:
+            self.update_review()
+
+    def go_back(self):
+        page_index = self.pages.currentIndex()
+
+        if page_index > 0:
+            self.pages.setCurrentIndex(page_index - 1)
+            self.update_navigation()
+
+    def go_next(self):
+        page_index = self.pages.currentIndex()
+
+        if not self.can_continue():
+            QMessageBox.warning(
+                self,
+                "Artemis Setup",
+                "Select a valid destination folder.",
+            )
+            return
+
+        if page_index < self.pages.count() - 1:
+            self.pages.setCurrentIndex(page_index + 1)
+            self.update_navigation()
+            return
+
+        self.finish_setup()
+
+    def finish_setup(self):
+        config = load_sorter_config()
+        config["first_run_completed"] = True
+        config["watch_folder"] = "{downloads}"
+        config["destination_root"] = self.selected_destination_value()
+        config["process_existing_on_startup"] = self.process_existing_checkbox.isChecked()
+
+        success, error_message = save_sorter_config(config)
+
+        if not success:
+            QMessageBox.warning(
+                self,
+                "Artemis Setup",
+                (
+                    "Artemis could not save your setup choices.\n\n"
+                    f"Details:\n{error_message}\n\n"
+                    "Please check that the selected folder is accessible and try again."
+                ),
+            )
+            return
+
+        self.accept()
+
 
 class ArtemisMainWindow(QMainWindow):
     TAB_PROCESSES = 0
@@ -1056,6 +1450,25 @@ QMainWindow {
 
         return " AND ".join(parts) if parts else "Invalid rule"
 
+    def format_rule_destination(self, action: dict) -> str:
+        if not isinstance(action, dict):
+            return ""
+
+        if action.get("type") != "move_to":
+            return ""
+
+        destination = str(action.get("destination", "")).strip()
+
+        if not destination:
+            return "Destination folder is missing."
+
+        destination_path = resolve_config_path(destination)
+
+        if not destination_path.exists() or not destination_path.is_dir():
+            return f"The folder no longer exists: {destination}"
+
+        return destination
+
     def get_rule_condition_key(self, rule: dict) -> tuple[tuple[str, str], ...]:
         key_parts = []
 
@@ -1420,7 +1833,6 @@ QMainWindow {
             action = rule.get("action", {})
 
             action_type = action.get("type", "")
-            destination = action.get("destination", "")
 
             enabled_item = QTableWidgetItem("Yes" if enabled else "No")
             enabled_item.setData(Qt.ItemDataRole.UserRole, str(rule_id))
@@ -1431,7 +1843,7 @@ QMainWindow {
             self.rules_table.setItem(visible_row, 1, QTableWidgetItem(str(name)))
             self.rules_table.setItem(visible_row, 2, QTableWidgetItem(self.format_rule_conditions(rule)))
             self.rules_table.setItem(visible_row, 3, QTableWidgetItem(str(action_type)))
-            self.rules_table.setItem(visible_row, 4, QTableWidgetItem(str(destination)))
+            self.rules_table.setItem(visible_row, 4, QTableWidgetItem(self.format_rule_destination(action)))
 
             if str(rule_id) in selected_rule_ids:
                 rows_to_restore.append(visible_row)
@@ -1815,6 +2227,7 @@ class ArtemisTray:
         self.timer.start(1000)
 
         self.update_status()
+        QTimer.singleShot(0, self.show_first_run_setup_if_needed)
 
     def build_tray_menu(self):
         menu = QMenu()
@@ -1858,6 +2271,19 @@ class ArtemisTray:
         self.window.show()
         self.window.raise_()
         self.window.activateWindow()
+
+    def show_first_run_setup_if_needed(self):
+        config = load_sorter_config()
+
+        if config.get("first_run_completed") is True:
+            return
+
+        dialog = FirstRunSetupDialog(self.window)
+        result = dialog.exec()
+
+        if result == QDialog.DialogCode.Accepted:
+            self.window.refresh_dynamic_data()
+            self.open_window(ArtemisMainWindow.TAB_PROCESSES)
 
     def update_status(self):
         running = is_artemis_running()
