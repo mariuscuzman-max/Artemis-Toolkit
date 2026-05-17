@@ -10,7 +10,7 @@ Artemis is designed to be quiet, safe, and local. It does not use cloud services
 
 ## Current status
 
-Tester build moving toward a packaged Windows release.
+Packaged Windows tester build.
 
 The app currently supports:
 
@@ -42,9 +42,23 @@ Cleanup actions always require user confirmation.
 - no content-based document scanning yet
 - custom rules support extension/name matching with AND logic, but not OR/nested groups
 
-## Packaged build
+## Install
 
-The current PyInstaller onedir build is created at:
+Download and run the current installer:
+
+```text
+dist\installer\ArtemisToolkitSetup-v0.6.1.exe
+```
+
+The Windows installer creates a Task Scheduler entry named `Artemis Toolkit` so Artemis starts when the user logs into Windows. When first-run setup is complete, the tray app starts the sorter automatically.
+
+The Settings page includes a `Run setup wizard` button so onboarding can be reviewed or repeated without resetting Downloads data.
+
+The tray menu `Quit Artemis` action shuts down both the tray UI and the background sorter.
+
+## Packaged build details
+
+The PyInstaller onedir build is created at:
 
 ```text
 dist\ArtemisToolkit\ArtemisToolkit.exe
@@ -57,15 +71,9 @@ This build uses:
 - bundled default config template from `config`
 - bundled tray/app icons from `icons`
 
-The Windows installer creates a Task Scheduler entry named `Artemis Toolkit` so Artemis starts when the user logs into Windows. When first-run setup is complete, the tray app starts the sorter automatically.
+## Run from source
 
-The Settings page includes a `Run setup wizard` button so onboarding can be reviewed or repeated without resetting Downloads data.
-
-The tray menu `Quit Artemis` action shuts down both the tray UI and the background sorter.
-
-## How to run
-
-Requires Python and dependencies from `requirements.txt`.
+For development, Artemis can also be run directly with Python and dependencies from `requirements.txt`.
 
 ```powershell
 python -m venv .venv
