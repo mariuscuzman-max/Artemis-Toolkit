@@ -8,6 +8,26 @@ Core idea:
 
 Artemis is designed to be quiet, safe, and local. It does not use cloud services, accounts, or background data collection.
 
+## Preview
+
+### Dashboard
+
+The Status page shows whether Artemis is monitoring Downloads and keeps a recent activity log of files it has moved.
+
+![Artemis dashboard showing active monitoring and recent file activity](Screenshot%202026-05-20%20150639.png)
+
+### Customize rules
+
+The Customize page lets you add extension and filename-based sorting rules, choose the action, and set a destination folder.
+
+![Artemis customize page for creating sorting rules](Screenshot%202026-05-19%20175552.png)
+
+### Sorting in action
+
+This demo shows a file disappearing from Downloads as Artemis sorts it, while the dashboard updates with the activity.
+
+![Artemis sorting a file while the dashboard records the move](Artemis%20gif.gif)
+
 ## Current status
 
 Packaged Windows tester build.
