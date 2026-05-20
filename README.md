@@ -14,23 +14,21 @@ Artemis is designed to be quiet, safe, and local. It does not use cloud services
 
 The Status page shows whether Artemis is monitoring Downloads and keeps a recent activity log of files it has moved.
 
-![Artemis dashboard showing active monitoring and recent file activity](Screenshot%202026-05-19%20175552.png)
+![Artemis dashboard showing active monitoring and recent file activity](assets/dashboard.png)
 
 ### Customize rules
 
 The Customize page lets you add extension and filename-based sorting rules, choose the action, and set a destination folder.
 
-![Artemis customize page for creating sorting rules](Screenshot%202026-05-20%20150639.png)
+![Artemis customize page for creating sorting rules](assets/customize-rules.png)
 
 ### Sorting in action
 
 This demo shows a file disappearing from Downloads as Artemis sorts it, while the dashboard updates with the activity.
 
-![Artemis sorting a file while the dashboard records the move](Artemis%20gif.gif)
+![Artemis sorting a file while the dashboard records the move](assets/sorting-demo.gif)
 
-## Current status
-
-Packaged Windows tester build.
+## Current status: Alpha Windows build
 
 The app currently supports:
 
@@ -55,19 +53,25 @@ Cleanup actions always require user confirmation.
 ## Current limitations
 
 - Windows-only for now
-- packaged EXE and installer exist for internal alpha testing
+- packaged EXE and installer are available as an early alpha build
 - archive handling is conservative
 - UI is functional but still being polished
 - no cloud sync, accounts, or cross-device behavior
 - no content-based document scanning yet
 - custom rules support extension/name matching with AND logic, but not OR/nested groups
 
+## Download
+
+Download the latest alpha installer from the Releases page:
+
+[Download Artemis Toolkit v0.6.1-alpha](https://github.com/mariuscuzman-max/Artemis-Toolkit/releases/tag/v0.6.1-alpha)
+
 ## Install
 
-Download and run the current installer:
+Run the downloaded installer:
 
 ```text
-dist\installer\ArtemisToolkitSetup-v0.6.1.exe
+ArtemisToolkitSetup-v0.6.1.exe
 ```
 
 The Windows installer creates a Task Scheduler entry named `Artemis Toolkit` so Artemis starts when the user logs into Windows. When first-run setup is complete, the tray app starts the sorter automatically.
